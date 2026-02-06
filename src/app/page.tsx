@@ -7,6 +7,8 @@ import { DailyTrendTable } from "@/components/DailyTrendTable";
 import { UserAttributesChart } from "@/components/UserAttributesChart";
 import { GeoDistributionChart } from "@/components/GeoDistributionChart";
 import { CreatorSupplyChart } from "@/components/CreatorSupplyChart";
+import { GrowthFunnelChart } from "@/components/GrowthFunnelChart";
+import { RetentionRateChart } from "@/components/RetentionRateChart";
 import { MonetizationChart } from "@/components/MonetizationChart";
 import { EconomyHealthChart } from "@/components/EconomyHealthChart";
 import { ContentFeedChart } from "@/components/ContentFeedChart";
@@ -68,10 +70,20 @@ export default function DashboardPage() {
   const [userAttributes, setUserAttributes] = useState<{ age: { attr: string; users: number; share: number }[]; device: { attr: string; users: number; share: number }[] } | null>(null);
   const [geoDistribution, setGeoDistribution] = useState<{ region: string; region_name: string; users: number; share: number }[]>([]);
   const [creatorSupply, setCreatorSupply] = useState<{ weekly: { week: string; kol_earnings: number; regular_earnings: number }[]; metrics: Record<string, number> } | null>(null);
+  const [growthFunnel, setGrowthFunnel] = useState<{ step: string; stepLabel: string; users: number; conversion: number }[]>([]);
+  const [retention, setRetention] = useState<{ chart: { day: string; rate: number; wow: number }[] }>({ chart: [] });
   const [monetization, setMonetization] = useState<{ revenue_stream: string; revenue: number; share: number; roi: number }[]>([]);
   const [economyHealth, setEconomyHealth] = useState<{ chart: { indicator: string; value: number; label: string }[]; metrics: { indicator: string; value: string }[] } | null>(null);
   const [contentFeed, setContentFeed] = useState<{ circle: { area: string; impressions: number; ctr: number; completion: number | null; replay: number | null }[]; featureCards: { area: string; impressions: number; ctr: number; completion: number | null; replay: number | null }[]; exclusives: { area: string; impressions: number; ctr: number; completion: number | null; replay: number | null }[] } | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "analytics">("overview");
+  const [authEnabled, setAuthEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((d) => setAuthEnabled(d.enabled === true))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function fetchKPI() {
@@ -89,12 +101,14 @@ export default function DashboardPage() {
       setError(null);
       const params = `?days=${trendDays}`;
       try {
-        const [dt, o, ua, geo, cs, mon, eh, cf] = await Promise.all([
+        const [dt, o, ua, geo, cs, gf, ret, mon, eh, cf] = await Promise.all([
           fetch(`/api/marketing/daily-trend${params}`).then((r) => r.json()),
           fetch(`/api/marketing/overview${params}`).then((r) => r.json()),
           fetch(`/api/marketing/user-attributes${params}`).then((r) => r.json()),
           fetch(`/api/marketing/geo-distribution${params}`).then((r) => r.json()),
           fetch(`/api/marketing/creator-supply${params}`).then((r) => r.json()),
+          fetch(`/api/marketing/growth-funnel?days=7`).then((r) => (r.ok ? r.json() : [])),
+          fetch(`/api/marketing/retention${params}`).then((r) => (r.ok ? r.json() : { chart: [] })),
           fetch(`/api/marketing/monetization${params}`).then((r) => r.json()),
           fetch(`/api/marketing/economy-health${params}`).then((r) => r.json()),
           fetch(`/api/marketing/content-feed${params}`).then((r) => r.json()),
@@ -104,6 +118,8 @@ export default function DashboardPage() {
         if (ua?.age && ua?.device) setUserAttributes(ua);
         if (Array.isArray(geo)) setGeoDistribution(geo);
         if (cs?.weekly && cs?.metrics) setCreatorSupply(cs);
+        if (Array.isArray(gf)) setGrowthFunnel(gf);
+        if (ret?.chart) setRetention(ret);
         if (Array.isArray(mon)) setMonetization(mon);
         if (eh?.chart && eh?.metrics) setEconomyHealth(eh);
         if (cf?.circle && cf?.featureCards && cf?.exclusives) setContentFeed(cf);
@@ -130,11 +146,11 @@ export default function DashboardPage() {
   const todayStr = new Date().toISOString().split("T")[0];
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--foreground)]">
       <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card-bg)]/95 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-4 py-3 sm:px-8">
           <h1 className="text-base font-semibold tracking-tight">{t("title")}</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {/* Tab switcher - Apple-style */}
             <div className="flex rounded-full p-1" style={{ backgroundColor: "var(--pill-bg)", boxShadow: "var(--shadow-sm)" }}>
               <button
@@ -160,29 +176,24 @@ export default function DashboardPage() {
                 {t("tabAnalytics")}
               </button>
             </div>
-            <div className="flex items-center gap-1 rounded-full p-1" style={{ backgroundColor: "var(--pill-bg)", boxShadow: "var(--shadow-sm)" }}>
-              <button
-                onClick={() => setLocale("en")}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200 ${locale === "en" ? "text-[var(--foreground)]" : "text-[var(--secondary-text)] hover:text-[var(--foreground)]"}`}
-                style={locale === "en" ? { backgroundColor: "var(--pill-active)", boxShadow: "var(--shadow-sm)" } : undefined}
-              >
-                EN
-              </button>
-              <button
-                onClick={() => setLocale("zh")}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200 ${locale === "zh" ? "text-[var(--foreground)]" : "text-[var(--secondary-text)] hover:text-[var(--foreground)]"}`}
-                style={locale === "zh" ? { backgroundColor: "var(--pill-active)", boxShadow: "var(--shadow-sm)" } : undefined}
-              >
-                中文
-              </button>
-            </div>
+            {authEnabled && (
+            <button
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                window.location.href = "/login";
+              }}
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-[var(--secondary-text)] hover:text-[var(--foreground)]"
+            >
+              {t("signOut")}
+            </button>
+            )}
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-8">
         {error && (
-          <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--card-bg)] p-4 text-[var(--foreground)]">
+          <div className="mb-6 rounded-xl bg-[var(--card-bg)] p-4 text-[var(--foreground)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             {error}. {t("errorMock")}
           </div>
         )}
@@ -197,21 +208,19 @@ export default function DashboardPage() {
               <h2 className="text-base font-semibold tracking-tight">{t("coreKpi")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("coreKpiDesc")}</p>
             </div>
-            <div className="flex gap-0.5 rounded-full p-1" style={{ backgroundColor: "var(--pill-bg)", boxShadow: "var(--shadow-sm)" }}>
-              {(["today", "7d", "30d"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setKpiMode(m)}
-                  className={`rounded-full px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                    kpiMode === m
-                      ? "text-[var(--foreground)]"
-                      : "text-[var(--secondary-text)] hover:text-[var(--foreground)]"
-                  }`}
-                  style={kpiMode === m ? { backgroundColor: "var(--pill-active)", boxShadow: "var(--shadow-sm)" } : undefined}
-                >
-                  {m === "today" ? t("today") : m === "7d" ? t("days7") : t("days30")}
-                </button>
-              ))}
+            <div className="flex shrink-0 items-center gap-2">
+              <label htmlFor="kpi-period" className="text-[11px] font-medium text-[var(--secondary-text)]">{t("kpiPeriod")}:</label>
+              <select
+                id="kpi-period"
+                value={kpiMode}
+                onChange={(e) => setKpiMode(e.target.value as "today" | "7d" | "30d")}
+                className="rounded-lg bg-[var(--card-bg)] px-3 py-2 text-xs text-[var(--foreground)]"
+                style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}
+              >
+                <option value="today">{t("today")}</option>
+                <option value="7d">{t("days7")}</option>
+                <option value="30d">{t("days30")}</option>
+              </select>
             </div>
           </div>
           <p className="mb-4 text-[11px] text-[var(--secondary-text)]">
@@ -288,18 +297,23 @@ export default function DashboardPage() {
               <h2 className="text-base font-semibold tracking-tight">{t("dailyTrend")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("dailyTrendDesc")}</p>
             </div>
-            <select
-              value={trendDays}
-              onChange={(e) => setTrendDays(Number(e.target.value))}
-              className="rounded-lg border border-[var(--border)] bg-[var(--card-bg)] px-3 py-2 text-xs text-[var(--foreground)] shadow-sm"
-            >
+            <div className="flex shrink-0 items-center gap-2">
+              <label htmlFor="trend-range" className="text-[11px] font-medium text-[var(--secondary-text)]">{t("trendRange")}:</label>
+              <select
+                id="trend-range"
+                value={trendDays}
+                onChange={(e) => setTrendDays(Number(e.target.value))}
+                className="rounded-lg bg-[var(--card-bg)] px-3 py-2 text-xs text-[var(--foreground)]"
+                style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}
+              >
               <option value={7}>7 {t("days")}</option>
               <option value={14}>14 {t("days")}</option>
               <option value={30}>30 {t("days")}</option>
-            </select>
+              </select>
+            </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl bg-[var(--card-bg)] shadow-sm">
+          <div className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             <div className="p-4 sm:p-5">
               <DailyTrendChart data={dailyTrend} />
               <div className="mt-5">
@@ -316,7 +330,7 @@ export default function DashboardPage() {
           <>
         {/* User Attributes, Geographic, Creator & Supply */}
         <div className="mb-8 grid gap-4 lg:grid-cols-3 overflow-visible">
-          <section className="overflow-visible rounded-xl bg-[var(--card-bg)] shadow-sm border border-[var(--border)]">
+          <section className="overflow-visible rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             <div className="p-4 sm:p-5 overflow-visible">
               <h2 className="text-base font-semibold tracking-tight">{t("userAttributes")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("userAttributesDesc")}</p>
@@ -329,7 +343,7 @@ export default function DashboardPage() {
               )}
             </div>
           </section>
-          <section className="overflow-visible rounded-xl bg-[var(--card-bg)] shadow-sm border border-[var(--border)]">
+          <section className="overflow-visible rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             <div className="p-4 sm:p-5 overflow-visible">
               <h2 className="text-base font-semibold tracking-tight">{t("geoDistribution")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("geoDistributionDesc")}</p>
@@ -338,7 +352,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
-          <section className="overflow-hidden rounded-xl bg-[var(--card-bg)] shadow-sm">
+          <section className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             <div className="p-4 sm:p-5">
               <h2 className="text-base font-semibold tracking-tight">{t("creatorSupply")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("creatorSupplyDesc")}</p>
@@ -353,9 +367,31 @@ export default function DashboardPage() {
           </section>
         </div>
 
+        {/* Growth Funnel & Retention Rate */}
+        <div className="mb-8 grid gap-4 lg:grid-cols-2">
+          <section className="overflow-visible rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <div className="overflow-visible p-4 sm:p-5">
+              <h2 className="text-base font-semibold tracking-tight">{t("growthFunnel")}</h2>
+              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("growthFunnelDesc")}</p>
+              <div className="mt-4">
+                <GrowthFunnelChart data={growthFunnel} />
+              </div>
+            </div>
+          </section>
+          <section className="overflow-visible rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <div className="overflow-visible p-4 sm:p-5">
+              <h2 className="text-base font-semibold tracking-tight">{t("retentionRate")}</h2>
+              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("retentionDesc")}</p>
+              <div className="mt-4">
+                <RetentionRateChart chart={retention.chart} />
+              </div>
+            </div>
+          </section>
+        </div>
+
         {/* Monetization & Economy Health */}
         <div className="mb-8 grid gap-4 lg:grid-cols-2">
-          <section className="overflow-hidden rounded-xl bg-[var(--card-bg)] shadow-sm">
+          <section className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             <div className="p-4 sm:p-5">
               <h2 className="text-base font-semibold tracking-tight">{t("monetization")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("monetizationDesc")}</p>
@@ -364,7 +400,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </section>
-          <section className="overflow-hidden rounded-xl bg-[var(--card-bg)] shadow-sm">
+          <section className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
             <div className="p-4 sm:p-5">
               <h2 className="text-base font-semibold tracking-tight">{t("economyHealth")}</h2>
               <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("economyHealthDesc")}</p>
@@ -380,7 +416,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Content & Feed Performance */}
-        <section className="overflow-hidden rounded-xl bg-[var(--card-bg)] shadow-sm">
+        <section className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
           <div className="p-4 sm:p-5">
             <h2 className="text-base font-semibold tracking-tight">{t("contentFeed")}</h2>
             <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("contentFeedDesc")}</p>
@@ -400,6 +436,30 @@ export default function DashboardPage() {
           </>
         )}
       </main>
+
+      <footer className="mt-auto border-t border-[var(--border)] bg-[var(--card-bg)]/50 py-4">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col items-center justify-between gap-3 px-4 sm:flex-row sm:px-8">
+          <p className="text-[11px] text-[var(--secondary-text)]">
+            © Ahoy Analytics Center · Secure access
+          </p>
+          <div className="flex items-center gap-1 rounded-full p-1" style={{ backgroundColor: "var(--pill-bg)", boxShadow: "var(--shadow-sm)" }}>
+            <button
+              onClick={() => setLocale("en")}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${locale === "en" ? "text-[var(--foreground)]" : "text-[var(--secondary-text)] hover:text-[var(--foreground)]"}`}
+              style={locale === "en" ? { backgroundColor: "var(--pill-active)", boxShadow: "var(--shadow-sm)" } : undefined}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => setLocale("zh")}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${locale === "zh" ? "text-[var(--foreground)]" : "text-[var(--secondary-text)] hover:text-[var(--foreground)]"}`}
+              style={locale === "zh" ? { backgroundColor: "var(--pill-active)", boxShadow: "var(--shadow-sm)" } : undefined}
+            >
+              中文
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

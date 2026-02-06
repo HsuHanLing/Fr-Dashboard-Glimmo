@@ -58,11 +58,11 @@ function ThWithTooltip({ label }: { label: string }) {
       <span className="cursor-help border-b border-dashed border-transparent hover:border-[var(--border)]">{label}</span>
       {show && info && (
         <div
-          className="absolute bottom-full right-0 z-50 mb-1 w-56 rounded-xl bg-[var(--card-bg)] px-3 py-2.5 text-[10px] leading-snug"
-          style={{ boxShadow: "var(--shadow-tooltip)", border: "1px solid rgba(0,0,0,0.06)" }}
+          className="absolute bottom-full right-0 z-50 mb-1 w-56 rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-2 py-1.5 text-[8px] leading-snug"
+          style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}
         >
           <p className="font-medium text-[var(--accent)]">{info.formula}</p>
-          <p className="mt-1.5 text-[var(--secondary-text)]">{info.description}</p>
+          <p className="mt-1 text-[var(--secondary-text)]">{info.description}</p>
         </div>
       )}
     </th>
@@ -88,11 +88,11 @@ function CellWithTooltip({
       <span className="cursor-help border-b border-dashed border-[var(--border)]">{value}</span>
       {show && info && (
         <div
-          className="absolute bottom-full right-0 z-50 mb-1 w-56 rounded-xl bg-[var(--card-bg)] px-3 py-2.5 text-[10px] leading-snug"
-          style={{ boxShadow: "var(--shadow-tooltip)", border: "1px solid rgba(0,0,0,0.06)" }}
+          className="absolute bottom-full right-0 z-50 mb-1 w-56 rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-2 py-1.5 text-[8px] leading-snug"
+          style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}
         >
           <p className="font-medium text-[var(--accent)]">{info.formula}</p>
-          <p className="mt-1.5 text-[var(--secondary-text)]">{info.description}</p>
+          <p className="mt-1 text-[var(--secondary-text)]">{info.description}</p>
         </div>
       )}
     </td>
@@ -103,7 +103,7 @@ export function DailyTrendTable({ data }: { data: Row[] }) {
   const display = data.slice(-7).reverse();
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+    <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid var(--card-stroke)" }}>
       <table className="w-full text-[11px]">
         <thead>
           <tr className="border-b border-[var(--border)] bg-[var(--background)]">

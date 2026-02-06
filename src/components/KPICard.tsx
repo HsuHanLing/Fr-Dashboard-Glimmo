@@ -18,8 +18,8 @@ export function KPICard({ title, value, change, changePositive, metricKey, vsLab
 
   return (
     <div
-      className="relative rounded-xl border border-[var(--border)] bg-[var(--card-bg)] p-3.5 transition"
-      style={{ boxShadow: "var(--shadow-sm)" }}
+      className="relative rounded-xl bg-[var(--card-bg)] p-3.5 transition"
+      style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
@@ -38,11 +38,11 @@ export function KPICard({ title, value, change, changePositive, metricKey, vsLab
 
       {showTooltip && info && (
         <div
-          className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-xl bg-[var(--card-bg)] px-3 py-2.5 text-[10px] leading-snug"
-          style={{ boxShadow: "var(--shadow-tooltip)", border: "1px solid rgba(0,0,0,0.06)" }}
+          className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-2 py-1.5 text-[8px] leading-snug"
+          style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}
         >
           <p className="font-medium text-[var(--accent)]">{info.formula}</p>
-          <p className="mt-1.5 text-[var(--secondary-text)]">{info.description}</p>
+          <p className="mt-1 text-[var(--secondary-text)]">{info.description}</p>
         </div>
       )}
     </div>

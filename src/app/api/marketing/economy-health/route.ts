@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
 import { bigquery } from "@/lib/bigquery";
 import { getEconomyHealthQuery } from "@/lib/queries";
-import { getMockEconomyHealth } from "@/lib/mock-data";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = parseInt(searchParams.get("days") || "30", 10);
-  const useMock =
-    process.env.USE_MOCK_DATA === "true" || !process.env.GOOGLE_CLOUD_PROJECT;
-
-  if (useMock) {
-    return NextResponse.json(getMockEconomyHealth());
-  }
 
   try {
     const [rows] = await bigquery.query({
@@ -38,6 +31,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ chart, metrics });
   } catch (error) {
     console.error("BigQuery economy-health error:", error);
-    return NextResponse.json(getMockEconomyHealth());
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

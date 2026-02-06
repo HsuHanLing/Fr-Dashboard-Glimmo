@@ -36,7 +36,7 @@ export function UserAttributesChart({
 
   return (
     <div className="flex flex-col gap-8 overflow-visible">
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--card-bg)] p-4">
+      <div className="rounded-lg bg-[var(--card-bg)] p-4" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
         <h3 className="mb-2 text-[10px] font-medium text-[var(--secondary-text)]">{ageLabel}</h3>
         <div className="h-[180px] w-full max-w-[280px] mx-auto min-w-0 overflow-visible">
           <ResponsiveContainer width="100%" height="100%">
@@ -74,7 +74,7 @@ export function UserAttributesChart({
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-2 rounded-lg border border-[var(--border)] p-2 text-[10px]">
+        <div className="mt-2 rounded-lg p-2 text-[10px]" style={{ border: "1px solid var(--card-stroke)" }}>
           {age.map((a) => (
             <div key={a.attr} className="flex justify-between py-0.5">
               <span>{ageToDisplay(a.attr, locale)}</span>
@@ -83,7 +83,7 @@ export function UserAttributesChart({
           ))}
         </div>
       </div>
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--card-bg)] p-4">
+      <div className="rounded-lg bg-[var(--card-bg)] p-4" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
         <h3 className="mb-2 text-[10px] font-medium text-[var(--secondary-text)]">{deviceLabel}</h3>
         <div className="h-[180px] w-full max-w-[280px] mx-auto min-w-0 overflow-visible">
           <ResponsiveContainer width="100%" height="100%">
@@ -121,7 +121,7 @@ export function UserAttributesChart({
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-2 rounded-lg border border-[var(--border)] p-2 text-[10px]">
+        <div className="mt-2 rounded-lg p-2 text-[10px]" style={{ border: "1px solid var(--card-stroke)" }}>
           {device.map((d) => (
             <div key={d.attr} className="flex justify-between py-0.5">
               <span>{deviceToDisplay(d.attr)}</span>

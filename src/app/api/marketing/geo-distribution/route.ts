@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { bigquery } from "@/lib/bigquery";
 import { getGeoDistributionQuery } from "@/lib/queries";
-import { getMockGeoDistribution } from "@/lib/mock-data";
 
 const COUNTRY_MAP: Record<string, { code: string; name: string }> = {
   "United States": { code: "US", name: "美国" },
@@ -30,13 +29,6 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = parseInt(searchParams.get("days") || "30", 10);
-  const useMock =
-    process.env.USE_MOCK_DATA === "true" || !process.env.GOOGLE_CLOUD_PROJECT;
-
-  if (useMock) {
-    return NextResponse.json(getMockGeoDistribution());
-  }
-
   try {
     const [rows] = await bigquery.query({
       query: getGeoDistributionQuery(days),
@@ -57,6 +49,6 @@ export async function GET(request: Request) {
     return NextResponse.json(mapped);
   } catch (error) {
     console.error("BigQuery geo-distribution error:", error);
-    return NextResponse.json(getMockGeoDistribution());
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

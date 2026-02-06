@@ -65,7 +65,7 @@ export function EconomyHealthChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="rounded-xl border border-[var(--border)]">
+      <div className="rounded-xl" style={{ border: "1px solid var(--card-stroke)" }}>
         <table className="w-full text-[11px]">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--background)]">

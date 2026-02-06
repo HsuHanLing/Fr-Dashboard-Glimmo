@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
 import { bigquery } from "@/lib/bigquery";
 import { getMonetizationQuery } from "@/lib/queries";
-import { getMockMonetization } from "@/lib/mock-data";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = parseInt(searchParams.get("days") || "30", 10);
-  const useMock =
-    process.env.USE_MOCK_DATA === "true" || !process.env.GOOGLE_CLOUD_PROJECT;
-
-  if (useMock) {
-    return NextResponse.json(getMockMonetization());
-  }
 
   try {
     const [rows] = await bigquery.query({
@@ -30,6 +23,6 @@ export async function GET(request: Request) {
     return NextResponse.json(mapped);
   } catch (error) {
     console.error("BigQuery monetization error:", error);
-    return NextResponse.json(getMockMonetization());
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

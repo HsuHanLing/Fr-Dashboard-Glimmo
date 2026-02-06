@@ -61,3 +61,9 @@ git push -u origin main
 | `GOOGLE_SERVICE_ACCOUNT` | ✅ | Service Account JSON 完整内容 |
 
 **不要**设置 `USE_MOCK_DATA`，留空即使用真实 BigQuery。
+
+### 6. 访问密钥（可选但推荐）
+
+| 变量名 | 说明 |
+|--------|------|
+| `DASHBOARD_PASSWORD` | 访问密钥。设置后，用户需输入此密钥才能进入看板。不设置则无需登录。 |

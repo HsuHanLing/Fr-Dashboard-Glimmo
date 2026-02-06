@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
 import { bigquery } from "@/lib/bigquery";
 import { getUserAttributesQuery } from "@/lib/queries";
-import { getMockUserAttributes } from "@/lib/mock-data";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = parseInt(searchParams.get("days") || "30", 10);
-  const useMock =
-    process.env.USE_MOCK_DATA === "true" || !process.env.GOOGLE_CLOUD_PROJECT;
-
-  if (useMock) {
-    return NextResponse.json(getMockUserAttributes());
-  }
 
   try {
     const [rows] = await bigquery.query({
@@ -40,6 +33,6 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("BigQuery user-attributes error:", error);
-    return NextResponse.json(getMockUserAttributes());
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
