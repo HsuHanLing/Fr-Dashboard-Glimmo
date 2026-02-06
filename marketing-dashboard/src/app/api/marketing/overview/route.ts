@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
 import { bigquery } from "@/lib/bigquery";
 import { getOverviewQuery } from "@/lib/queries";
-import { getMockOverview } from "@/lib/mock-data";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = parseInt(searchParams.get("days") || "30", 10);
-  const useMock = process.env.USE_MOCK_DATA === "true" || !process.env.GOOGLE_CLOUD_PROJECT;
-
-  if (useMock) {
-    return NextResponse.json(getMockOverview());
-  }
 
   try {
     const [rows] = await bigquery.query({

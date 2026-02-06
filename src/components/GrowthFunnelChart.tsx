@@ -98,7 +98,7 @@ export function GrowthFunnelChart({ data }: { data: FunnelRow[] }) {
 
   const displayData = data.map((d) => ({
     ...d,
-    stepLabel: t(STEP_KEYS[d.step] || d.step),
+    stepLabel: t((STEP_KEYS[d.step] || d.step) as Parameters<typeof t>[0]),
   }));
 
   if (!displayData.length) {
@@ -155,10 +155,10 @@ export function GrowthFunnelChart({ data }: { data: FunnelRow[] }) {
                     className="rounded-md border border-[var(--border)] bg-[var(--card-bg)] px-1.5 py-1 text-[9px] leading-snug"
                     style={{ boxShadow: "var(--shadow-tooltip)" }}
                   >
-                    <p className="font-medium text-[var(--accent)]">{info?.formula ?? label}</p>
-                    {info?.description && (
+                    <p className="font-medium text-[var(--accent)]">{typeof info === "object" && info && "formula" in info ? info.formula : label}</p>
+                    {typeof info === "object" && info && "description" in info && info.description ? (
                       <p className="mt-0.5 text-[var(--secondary-text)]">{info.description}</p>
-                    )}
+                    ) : null}
                     <p className="mt-0.5 tabular-nums">{t("userCount")}: {Number(payload[0].value).toLocaleString()}</p>
                   </div>
                 );
