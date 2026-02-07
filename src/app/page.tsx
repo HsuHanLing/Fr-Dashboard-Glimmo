@@ -12,9 +12,14 @@ import { RetentionRateChart } from "@/components/RetentionRateChart";
 import { MonetizationChart } from "@/components/MonetizationChart";
 import { EconomyHealthChart } from "@/components/EconomyHealthChart";
 import { ContentFeedChart } from "@/components/ContentFeedChart";
+import { AIChatWidget } from "@/components/AIChatWidget";
+import type { DashboardContext } from "@/components/AIChatWidget";
 import { useLocale } from "@/contexts/LocaleContext";
 
 type KPI = {
+  data_range_start?: string;
+  data_range_end?: string;
+  data_updated_at?: string | null;
   dau: number;
   d1_retention: number;
   pay_rate: number;
@@ -65,6 +70,11 @@ export default function DashboardPage() {
   const [dailyTrend, setDailyTrend] = useState<DailyRow[]>([]);
   const [kpiMode, setKpiMode] = useState<"today" | "7d" | "30d">("today");
   const [trendDays, setTrendDays] = useState(7);
+  const [filterChannel, setFilterChannel] = useState("all");
+  const [filterVersion, setFilterVersion] = useState("all");
+  const [filterUserSegment, setFilterUserSegment] = useState("all");
+  const [filterPlatform, setFilterPlatform] = useState("all");
+  const [versions, setVersions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userAttributes, setUserAttributes] = useState<{ age: { attr: string; users: number; share: number }[]; device: { attr: string; users: number; share: number }[] } | null>(null);
@@ -86,32 +96,49 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/marketing/versions")
+      .then((r) => r.json())
+      .then((v) => Array.isArray(v) && setVersions(v))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     async function fetchKPI() {
-      const r = await fetch(`/api/marketing/kpi?mode=${kpiMode}`);
+      const params = new URLSearchParams({ mode: kpiMode });
+      if (filterChannel !== "all") params.set("channel", filterChannel);
+      if (filterVersion !== "all") params.set("version", filterVersion);
+      if (filterUserSegment !== "all") params.set("userSegment", filterUserSegment);
+      if (filterPlatform !== "all") params.set("platform", filterPlatform);
+      const r = await fetch(`/api/marketing/kpi?${params}`);
       const j = await r.json();
       if (j.error) throw new Error(j.error);
       setKpi(j);
     }
     fetchKPI().catch((e) => setError(String(e)));
-  }, [kpiMode]);
+  }, [kpiMode, filterChannel, filterVersion, filterUserSegment, filterPlatform]);
 
   useEffect(() => {
     async function fetchAll() {
       setLoading(true);
       setError(null);
-      const params = `?days=${trendDays}`;
+      const params = new URLSearchParams({ days: String(trendDays) });
+      if (filterChannel !== "all") params.set("channel", filterChannel);
+      if (filterVersion !== "all") params.set("version", filterVersion);
+      if (filterUserSegment !== "all") params.set("userSegment", filterUserSegment);
+      if (filterPlatform !== "all") params.set("platform", filterPlatform);
+      const qs = `?${params}`;
       try {
         const [dt, o, ua, geo, cs, gf, ret, mon, eh, cf] = await Promise.all([
-          fetch(`/api/marketing/daily-trend${params}`).then((r) => r.json()),
-          fetch(`/api/marketing/overview${params}`).then((r) => r.json()),
-          fetch(`/api/marketing/user-attributes${params}`).then((r) => r.json()),
-          fetch(`/api/marketing/geo-distribution${params}`).then((r) => r.json()),
-          fetch(`/api/marketing/creator-supply${params}`).then((r) => r.json()),
+          fetch(`/api/marketing/daily-trend${qs}`).then((r) => r.json()),
+          fetch(`/api/marketing/overview${qs}`).then((r) => r.json()),
+          fetch(`/api/marketing/user-attributes${qs}`).then((r) => r.json()),
+          fetch(`/api/marketing/geo-distribution${qs}`).then((r) => r.json()),
+          fetch(`/api/marketing/creator-supply${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/growth-funnel?days=7`).then((r) => (r.ok ? r.json() : [])),
-          fetch(`/api/marketing/retention${params}`).then((r) => (r.ok ? r.json() : { chart: [] })),
-          fetch(`/api/marketing/monetization${params}`).then((r) => r.json()),
-          fetch(`/api/marketing/economy-health${params}`).then((r) => r.json()),
-          fetch(`/api/marketing/content-feed${params}`).then((r) => r.json()),
+          fetch(`/api/marketing/retention${qs}`).then((r) => (r.ok ? r.json() : { chart: [] })),
+          fetch(`/api/marketing/monetization${qs}`).then((r) => r.json()),
+          fetch(`/api/marketing/economy-health${qs}`).then((r) => r.json()),
+          fetch(`/api/marketing/content-feed${qs}`).then((r) => r.json()),
         ]);
         if (Array.isArray(dt)) setDailyTrend(dt);
         if (o.error) throw new Error(o.error);
@@ -130,7 +157,7 @@ export default function DashboardPage() {
       }
     }
     fetchAll();
-  }, [trendDays]);
+  }, [trendDays, filterChannel, filterVersion, filterUserSegment, filterPlatform]);
 
   if (loading && !kpi) {
     return (
@@ -149,7 +176,10 @@ export default function DashboardPage() {
     <div className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--foreground)]">
       <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card-bg)]/95 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-4 py-3 sm:px-8">
-          <h1 className="text-base font-semibold tracking-tight">{t("title")}</h1>
+          <div className="flex items-center gap-2">
+            <img src="/logo2.png" alt="" className="h-7 w-auto rounded-md" />
+            <h1 className="text-base font-semibold uppercase tracking-tight">{t("title")}</h1>
+          </div>
           <div className="flex items-center gap-3">
             {/* Tab switcher - Apple-style */}
             <div className="flex rounded-full p-1" style={{ backgroundColor: "var(--pill-bg)", boxShadow: "var(--shadow-sm)" }}>
@@ -201,13 +231,92 @@ export default function DashboardPage() {
         {/* Tab 1: Overview - Core KPI + Daily Trend */}
         {activeTab === "overview" && (
           <>
+        {/* Overview Filters */}
+        <section className="mb-6 flex flex-wrap gap-3">
+          <div className="rounded-xl bg-[var(--card-bg)] px-4 py-3" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--secondary-text)]">{t("filterChannel")}</label>
+            <select
+              value={filterChannel}
+              onChange={(e) => setFilterChannel(e.target.value)}
+              disabled={loading}
+              className="min-w-[140px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <option value="all">{t("all")}</option>
+              <option value="organic">{t("filterChannelOrganic")}</option>
+              <option value="paid">{t("filterChannelPaid")}</option>
+              <option value="social">{t("filterChannelSocial")}</option>
+              <option value="app_store">{t("filterChannelAppStore")}</option>
+            </select>
+          </div>
+          <div className="rounded-xl bg-[var(--card-bg)] px-4 py-3" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--secondary-text)]">{t("filterVersion")}</label>
+            <select
+              value={filterVersion}
+              onChange={(e) => setFilterVersion(e.target.value)}
+              disabled={loading}
+              className="min-w-[140px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <option value="all">{t("all")}</option>
+              {versions.map((v) => (
+                <option key={v} value={v === "(not set)" ? "(not set)" : v}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div className="rounded-xl bg-[var(--card-bg)] px-4 py-3" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--secondary-text)]">{t("filterPlatform")}</label>
+            <select
+              value={filterPlatform}
+              onChange={(e) => setFilterPlatform(e.target.value)}
+              disabled={loading}
+              className="min-w-[140px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <option value="all">{t("all")}</option>
+              <option value="ANDROID">{t("filterPlatformAndroid")}</option>
+              <option value="IOS">{t("filterPlatformIos")}</option>
+              <option value="WEB">{t("filterPlatformWeb")}</option>
+            </select>
+          </div>
+          <div className="flex items-start gap-2 rounded-xl bg-[var(--card-bg)] px-4 py-3" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-[var(--secondary-text)]">{t("filterUserSegment")}</label>
+              <select
+                value={filterUserSegment}
+                onChange={(e) => setFilterUserSegment(e.target.value)}
+                disabled={loading}
+                className="min-w-[180px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                <option value="all">{t("filterUserAll")}</option>
+                <option value="new">{t("filterUserNew")}</option>
+                <option value="old">{t("filterUserOld")}</option>
+                <option value="returning">{t("filterUserReturning")}</option>
+              </select>
+            </div>
+            {filterUserSegment === "returning" && (
+              <span className="self-center text-[10px] text-[var(--secondary-text)]" style={{ maxWidth: 220 }}>
+                {t("filterUserReturningNote")}
+              </span>
+            )}
+          </div>
+        </section>
+
         {/* Core KPI Snapshot */}
         <section className="mb-8">
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight">{t("coreKpi")}</h2>
-              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("coreKpiDesc")}</p>
-            </div>
+          <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-semibold tracking-tight">
+              {t("coreKpi")}
+              <span className="ml-2 font-normal text-[11px] text-[var(--secondary-text)]">
+                {kpi?.data_range_start && kpi?.data_range_end
+                  ? t("dataRange") + `: ${kpi.data_range_start} ~ ${kpi.data_range_end}`
+                  : t("dataRange") + `: ${todayStr}`}
+                {kpi?.data_updated_at && (
+                  <> · {t("lastUpdated")}: {kpi.data_updated_at}</>
+                )}
+              </span>
+            </h2>
             <div className="flex shrink-0 items-center gap-2">
               <label htmlFor="kpi-period" className="text-[11px] font-medium text-[var(--secondary-text)]">{t("kpiPeriod")}:</label>
               <select
@@ -223,9 +332,20 @@ export default function DashboardPage() {
               </select>
             </div>
           </div>
-          <p className="mb-4 text-[11px] text-[var(--secondary-text)]">
-            {todayStr} · {t("dataUpdate")}
-          </p>
+          <div className="mb-4 mt-2 flex flex-wrap gap-2">
+            <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+              {t("filterChannel")}: {filterChannel === "all" ? t("all") : filterChannel === "organic" ? t("filterChannelOrganic") : filterChannel === "paid" ? t("filterChannelPaid") : filterChannel === "social" ? t("filterChannelSocial") : t("filterChannelAppStore")}
+            </span>
+            <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+              {t("filterVersion")}: {filterVersion === "all" ? t("all") : filterVersion}
+            </span>
+            <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+              {t("filterPlatform")}: {filterPlatform === "all" ? t("all") : filterPlatform === "ANDROID" ? t("filterPlatformAndroid") : filterPlatform === "IOS" ? t("filterPlatformIos") : t("filterPlatformWeb")}
+            </span>
+            <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+              {t("filterUserSegment")}: {filterUserSegment === "all" ? t("filterUserAll") : filterUserSegment === "new" ? t("filterUserNew") : filterUserSegment === "old" ? t("filterUserOld") : t("filterUserReturning")}
+            </span>
+          </div>
 
           {kpi && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
@@ -287,16 +407,26 @@ export default function DashboardPage() {
               />
             </div>
           )}
-          <p className="mt-4 text-xs text-[var(--secondary-text)]">{t("scopeCompare")}</p>
         </section>
 
         {/* Daily Trend */}
         <section className="mb-8">
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight">{t("dailyTrend")}</h2>
-              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("dailyTrendDesc")}</p>
-            </div>
+          <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-semibold tracking-tight">
+              {t("dailyTrend")}
+              <span className="ml-2 font-normal text-[11px] text-[var(--secondary-text)]">
+                {(() => {
+                  const end = todayStr;
+                  const start = new Date();
+                  start.setDate(start.getDate() - trendDays + 1);
+                  const startStr = start.toISOString().slice(0, 10);
+                  return t("dataRange") + `: ${startStr} ~ ${end}`;
+                })()}
+                {kpi?.data_updated_at && (
+                  <> · {t("lastUpdated")}: {kpi.data_updated_at}</>
+                )}
+              </span>
+            </h2>
             <div className="flex shrink-0 items-center gap-2">
               <label htmlFor="trend-range" className="text-[11px] font-medium text-[var(--secondary-text)]">{t("trendRange")}:</label>
               <select
@@ -306,11 +436,25 @@ export default function DashboardPage() {
                 className="rounded-lg bg-[var(--card-bg)] px-3 py-2 text-xs text-[var(--foreground)]"
                 style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}
               >
-              <option value={7}>7 {t("days")}</option>
-              <option value={14}>14 {t("days")}</option>
-              <option value={30}>30 {t("days")}</option>
+                <option value={7}>7 {t("days")}</option>
+                <option value={14}>14 {t("days")}</option>
+                <option value={30}>30 {t("days")}</option>
               </select>
             </div>
+          </div>
+          <div className="mb-4 mt-2 flex flex-wrap gap-2">
+                <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+                  {t("filterChannel")}: {filterChannel === "all" ? t("all") : filterChannel === "organic" ? t("filterChannelOrganic") : filterChannel === "paid" ? t("filterChannelPaid") : filterChannel === "social" ? t("filterChannelSocial") : t("filterChannelAppStore")}
+                </span>
+                <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+                  {t("filterVersion")}: {filterVersion === "all" ? t("all") : filterVersion}
+                </span>
+                <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+                  {t("filterPlatform")}: {filterPlatform === "all" ? t("all") : filterPlatform === "ANDROID" ? t("filterPlatformAndroid") : filterPlatform === "IOS" ? t("filterPlatformIos") : t("filterPlatformWeb")}
+                </span>
+                <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+                  {t("filterUserSegment")}: {filterUserSegment === "all" ? t("filterUserAll") : filterUserSegment === "new" ? t("filterUserNew") : filterUserSegment === "old" ? t("filterUserOld") : t("filterUserReturning")}
+                </span>
           </div>
 
           <div className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
@@ -460,6 +604,23 @@ export default function DashboardPage() {
           </div>
         </div>
       </footer>
+
+      <AIChatWidget
+        dashboardData={{
+          kpi,
+          dailyTrend,
+          filters: {
+            channel: filterChannel,
+            version: filterVersion,
+            userSegment: filterUserSegment,
+            platform: filterPlatform,
+            kpiMode,
+            trendDays,
+          },
+          growthFunnel,
+          retention,
+        } as DashboardContext}
+      />
     </div>
   );
 }

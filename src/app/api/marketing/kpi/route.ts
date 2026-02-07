@@ -19,10 +19,19 @@ function parseRow(r: Record<string, unknown>) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = (searchParams.get("mode") || "today") as "today" | "7d" | "30d";
+  const channel = searchParams.get("channel") || undefined;
+  const version = searchParams.get("version") || undefined;
+  const userSegment = searchParams.get("userSegment") || undefined;
+  const platform = searchParams.get("platform") || undefined;
+  const filters = (channel || version || userSegment || platform) ? { channel, version, userSegment, platform } : undefined;
 
   try {
-    const [rows] = await bigquery.query({ query: getKPIAndWowQuery(mode) });
+    const [rows] = await bigquery.query({ query: getKPIAndWowQuery(mode, filters) });
     const arr = (rows as Record<string, unknown>[]) || [];
+    // Use max date from actual KPI data (not separate query) so Last updated matches chart/table
+    const dataUpdatedAt = arr.length
+      ? String(parseRow(arr[0]).dateStr)
+      : null;
     if (!arr.length) {
       return NextResponse.json({ error: "No KPI data" }, { status: 500 });
     }
@@ -42,7 +51,18 @@ export async function GET(request: Request) {
     const curr = sum(currRows.map(parseRow));
     const wow = sum(wowRows.map(parseRow));
 
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const start = new Date(now);
+    if (mode === "today") start.setDate(start.getDate());
+    else if (mode === "7d") start.setDate(start.getDate() - 6);
+    else start.setDate(start.getDate() - 29);
+    const rangeStart = start.toISOString().slice(0, 10);
+
     return NextResponse.json({
+      data_range_start: rangeStart,
+      data_range_end: today,
+      data_updated_at: dataUpdatedAt,
       dau: curr.dau,
       d1_retention: Math.round(curr.d1Retention * 10) / 10,
       pay_rate: curr.dau > 0 ? Math.round((curr.payers / curr.dau) * 1000) / 10 : 0,

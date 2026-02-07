@@ -6,10 +6,96 @@
 const dataset = () => process.env.BIGQUERY_DATASET || "analytics_233462855";
 const table = () => process.env.BIGQUERY_TABLE || "events_*";
 
+export type OverviewFilters = {
+  channel?: string;
+  version?: string;
+  userSegment?: string;
+  platform?: string;
+};
+
 function tableFilter(days: number) {
   return `_TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY))
       AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
       AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)`;
+}
+
+function filterClause(filters: OverviewFilters | undefined, days: number): string {
+  if (!filters) return "";
+  const parts: string[] = [];
+
+  if (filters.channel && filters.channel !== "all") {
+    if (filters.channel === "organic") {
+      parts.push(`(COALESCE(traffic_source.medium,'') IN ('organic','(none)','(not set)','') OR traffic_source.source = '(direct)')`);
+    } else if (filters.channel === "paid") {
+      parts.push(`traffic_source.medium IN ('cpc','cpm','cpv','paid')`);
+    } else if (filters.channel === "social") {
+      parts.push(`(traffic_source.medium = 'social' OR LOWER(COALESCE(traffic_source.source,'')) LIKE '%facebook%' OR LOWER(COALESCE(traffic_source.source,'')) LIKE '%instagram%' OR LOWER(COALESCE(traffic_source.source,'')) LIKE '%twitter%')`);
+    } else if (filters.channel === "app_store") {
+      parts.push(`(traffic_source.medium = 'app' OR LOWER(COALESCE(traffic_source.source,'')) LIKE '%play%' OR LOWER(COALESCE(traffic_source.source,'')) LIKE '%store%')`);
+    }
+  }
+
+  if (filters.platform && filters.platform !== "all") {
+    const platformUpper = filters.platform.toUpperCase();
+    parts.push(`UPPER(COALESCE(platform, '')) = '${platformUpper}'`);
+  }
+
+  if (filters.version && filters.version !== "all") {
+    if (filters.version === "(not set)") {
+      parts.push(`(app_info.version IS NULL OR TRIM(COALESCE(app_info.version,'')) = '')`);
+    } else {
+      parts.push(`TRIM(COALESCE(app_info.version,'')) = '${String(filters.version).replace(/'/g, "''")}'`);
+    }
+  }
+
+  if (filters.userSegment && filters.userSegment !== "all") {
+    if (filters.userSegment === "new") {
+      parts.push(`user_pseudo_id IN (
+        SELECT user_pseudo_id FROM \`${dataset()}.${table()}\` 
+        WHERE ${tableFilter(days)} AND event_name = 'first_open'
+        GROUP BY 1
+      )`);
+    } else if (filters.userSegment === "old") {
+      parts.push(`user_pseudo_id NOT IN (
+        SELECT user_pseudo_id FROM \`${dataset()}.${table()}\`
+        WHERE ${tableFilter(days)} AND event_name = 'first_open'
+        GROUP BY 1
+      )`);
+    } else if (filters.userSegment === "returning") {
+      const lookback = Math.max(days + 14, 30);
+      const filtersNoUser = { channel: filters.channel, version: filters.version, platform: filters.platform };
+      const extraNoUser = filterClause(filtersNoUser, lookback);
+      parts.push(`user_pseudo_id IN (
+        WITH user_days AS (
+          SELECT user_pseudo_id, PARSE_DATE('%Y%m%d', event_date) as dt
+          FROM \`${dataset()}.${table()}\`
+          WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY))
+            AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY)
+            AND PARSE_DATE('%Y%m%d', event_date) <= CURRENT_DATE()${extraNoUser}
+          GROUP BY 1, 2
+        ),
+        with_prev AS (
+          SELECT user_pseudo_id, dt,
+            LAG(dt) OVER (PARTITION BY user_pseudo_id ORDER BY dt) as prev_dt
+          FROM user_days
+        )
+        SELECT DISTINCT user_pseudo_id
+        FROM with_prev
+        WHERE DATE_DIFF(dt, prev_dt, DAY) >= 7
+      )`);
+    }
+  }
+
+  return parts.length ? " AND " + parts.join(" AND ") : "";
+}
+
+export function getVersionsQuery(days: number = 60) {
+  return `
+    SELECT DISTINCT COALESCE(NULLIF(TRIM(app_info.version), ''), '(not set)') as version
+    FROM \`${dataset()}.${table()}\`
+    WHERE ${tableFilter(days)}
+    ORDER BY version DESC
+  `;
 }
 
 // Custom event mapping from your data
@@ -97,8 +183,9 @@ export function getCampaignsQuery(days: number = 30, limit: number = 20) {
 }
 
 // KPI & Daily Trend - uses same tableFilter as daily-trend for consistency
-export function getKPIAndWowQuery(mode: "today" | "7d" | "30d") {
+export function getKPIAndWowQuery(mode: "today" | "7d" | "30d", filters?: OverviewFilters) {
   const days = mode === "today" ? 8 : mode === "7d" ? 14 : 60;
+  const extra = filterClause(filters, days);
   return `
     WITH daily AS (
       SELECT
@@ -110,7 +197,7 @@ export function getKPIAndWowQuery(mode: "today" | "7d" | "30d") {
         COALESCE(SUM(CASE WHEN event_name IN ('purchase','in_app_purchase') THEN event_value_in_usd END), 0) as revenue,
         COUNT(DISTINCT CASE WHEN event_name IN ('switch_Watermark','unlock','Unlock_Sup') OR event_name LIKE '%unlock%' THEN user_pseudo_id END) as unlock_users
       FROM \`${dataset()}.${table()}\`
-      WHERE ${tableFilter(days)}
+      WHERE ${tableFilter(days)}${extra}
       GROUP BY 1, 2
     ),
     d1_cohort AS (
@@ -146,19 +233,51 @@ export function getKPIAndWowQuery(mode: "today" | "7d" | "30d") {
   `;
 }
 
-export function getDailyTrendQuery(days: number = 7) {
+export function getDailyTrendQuery(days: number = 7, filters?: OverviewFilters) {
+  const extra = filterClause(filters, days);
   return `
+    WITH daily AS (
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%Y%m%d', event_date)) as date,
+        PARSE_DATE('%Y%m%d', event_date) as dt,
+        COUNT(DISTINCT CASE WHEN event_name = 'first_open' THEN user_pseudo_id END) as new_users,
+        COUNT(DISTINCT user_pseudo_id) as dau,
+        COUNT(DISTINCT CASE WHEN event_name IN ('purchase','in_app_purchase') THEN user_pseudo_id END) as payers,
+        COALESCE(SUM(CASE WHEN event_name IN ('purchase','in_app_purchase') THEN event_value_in_usd END), 0) as revenue,
+        COUNT(DISTINCT CASE WHEN event_name IN ('switch_Watermark','unlock','Unlock_Sup') OR event_name LIKE '%unlock%' THEN user_pseudo_id END) as unlock_users
+      FROM \`${dataset()}.${table()}\`
+      WHERE ${tableFilter(days)}${extra}
+      GROUP BY event_date
+    ),
+    d1_cohort AS (
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', DATE_ADD(s.signup_dt, INTERVAL 1 DAY)) as return_date,
+        COUNT(DISTINCT s.user_pseudo_id) as retained_d1
+      FROM (
+        SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) as signup_dt
+        FROM \`${dataset()}.${table()}\`
+        WHERE ${tableFilter(days)} AND event_name = 'first_open'${extra}
+        GROUP BY 1
+      ) s
+      JOIN \`${dataset()}.${table()}\` b
+        ON s.user_pseudo_id = b.user_pseudo_id
+        AND PARSE_DATE('%Y%m%d', b.event_date) = DATE_ADD(s.signup_dt, INTERVAL 1 DAY)
+      WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY))
+        AND PARSE_DATE('%Y%m%d', b.event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
+      GROUP BY 1
+    )
     SELECT
-      FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%Y%m%d', event_date)) as date,
-      COUNT(DISTINCT CASE WHEN event_name = 'first_open' THEN user_pseudo_id END) as new_users,
-      COUNT(DISTINCT user_pseudo_id) as dau,
-      COUNT(DISTINCT CASE WHEN event_name IN ('purchase','in_app_purchase') THEN user_pseudo_id END) as payers,
-      COALESCE(SUM(CASE WHEN event_name IN ('purchase','in_app_purchase') THEN event_value_in_usd END), 0) as revenue,
-      COUNT(DISTINCT CASE WHEN event_name IN ('switch_Watermark','unlock','Unlock_Sup') OR event_name LIKE '%unlock%' THEN user_pseudo_id END) as unlock_users
-    FROM \`${dataset()}.${table()}\`
-    WHERE ${tableFilter(days)}
-    GROUP BY event_date
-    ORDER BY event_date ASC
+      d.date,
+      d.new_users,
+      d.dau,
+      d.payers,
+      d.revenue,
+      d.unlock_users,
+      c.retained_d1,
+      LAG(d.new_users) OVER (ORDER BY d.dt) as prev_day_new_users
+    FROM daily d
+    LEFT JOIN d1_cohort c ON c.return_date = d.date
+    ORDER BY d.dt ASC
   `;
 }
 
