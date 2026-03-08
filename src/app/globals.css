@@ -6,8 +6,8 @@
   --foreground: #202124;
   --card-bg: #ffffff;
   --border: #dadce0;
-  --accent: #1a73e8;
-  --accent-hover: #1765cc;
+  --accent: #43a047;
+  --accent-hover: #388e3c;
   --secondary-text: #5f6368;
   --positive: #1e8e3e;
   --negative: #d93025;
@@ -33,8 +33,8 @@
     --foreground: #e8eaed;
     --card-bg: #292a2d;
     --border: #5f6368;
-    --accent: #8ab4f8;
-    --accent-hover: #aecbfa;
+    --accent: #81c995;
+    --accent-hover: #a5d6a7;
     --secondary-text: #9aa0a6;
     --positive: #81c995;
     --negative: #f28b82;

@@ -4,34 +4,50 @@ import { getContentFeedQuery } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
+type RawRow = {
+  area: string;
+  impressions: number;
+  clicks: number;
+  users: number;
+  video_starts: number;
+  video_completes: number;
+  video_replays: number;
+  ctr: number;
+  completion_rate: number;
+  replay_rate: number;
+};
+
+function mapRow(a: RawRow) {
+  return {
+    area: a.area || "Other",
+    impressions: Number(a.impressions ?? 0),
+    ctr: Math.round(Number(a.ctr ?? 0) * 10) / 10,
+    completion: a.video_starts > 0 ? Math.round(Number(a.completion_rate ?? 0) * 10) / 10 : null,
+    replay: a.video_completes > 0 ? Math.round(Number(a.replay_rate ?? 0) * 10) / 10 : null,
+  };
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = parseInt(searchParams.get("days") || "30", 10);
 
   try {
-    const [rows] = await bigquery.query({
-      query: getContentFeedQuery(days),
-    });
-    const r = (rows as { area: string; impressions: number; clicks: number; ctr: number }[]) || [];
-    const circle = r.filter((x) =>
-      ["好友", "ForYou", "Friend"].some((k) => x.area?.includes(k))
-    ).slice(0, 3);
-    const featureCards = r.filter((x) =>
-      ["Sequel", "SUP", "引导", "创意", "邀请"].some((k) => x.area?.includes(k))
-    ).slice(0, 5);
-    const exclusives = r.filter((x) =>
-      ["KOL", "creator", "创作者"].some((k) => x.area?.includes(k))
-    ).slice(0, 2);
-    const mapRow = (a: { area: string; impressions: number; clicks: number; ctr: number }) => ({
-      area: a.area || "Other",
-      impressions: Number(a.impressions),
-      ctr: Number(a.ctr) || 0,
-      completion: circle.some((c) => c.area === a.area) ? Number(a.ctr) * 2 : null,
-      replay: circle.some((c) => c.area === a.area) ? Number(a.ctr) * 0.6 : null,
-    });
+    const [rows] = await bigquery.query({ query: getContentFeedQuery(days) });
+    const r = (rows as RawRow[]) || [];
+
+    const circle = r
+      .filter((x) => ["好友", "ForYou", "Friend", "Search"].some((k) => x.area?.includes(k)))
+      .slice(0, 5);
+    const featureCards = r
+      .filter((x) => ["Sequel", "VideoPlay", "SUP", "引导", "创意", "邀请", "Feature"].some((k) => x.area?.includes(k)))
+      .slice(0, 5);
+    const exclusives = r
+      .filter((x) => ["KOL", "creator", "创作者", "Exclusive"].some((k) => x.area?.includes(k)))
+      .slice(0, 3);
+
     return NextResponse.json({
       circle: circle.map(mapRow),
-      featureCards: featureCards.map((x) => ({ ...mapRow(x), completion: null, replay: null })),
+      featureCards: featureCards.map(mapRow),
       exclusives: exclusives.map(mapRow),
     });
   } catch (error) {

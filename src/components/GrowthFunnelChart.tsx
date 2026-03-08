@@ -17,20 +17,22 @@ import { METRIC_FORMULAS } from "@/lib/metric-formulas";
 type FunnelRow = { step: string; stepLabel: string; users: number; conversion: number };
 
 const STEP_KEYS: Record<string, string> = {
-  signup: "signup",
-  activation: "activation",
+  first_open: "firstOpen",
+  registration: "registration",
+  first_unlock: "firstUnlock",
+  scratch_activated: "scratchActivated",
   first_sup: "firstSup",
   first_up: "firstUp",
-  first_unlock: "firstUnlock",
   first_pay: "firstPay",
 };
 
 const STEP_METRIC_KEYS: Record<string, string> = {
-  signup: "FUNNEL_SIGNUP",
-  activation: "FUNNEL_ACTIVATION",
+  first_open: "FUNNEL_FIRST_OPEN",
+  registration: "FUNNEL_REGISTRATION",
+  first_unlock: "FUNNEL_FIRST_UNLOCK",
+  scratch_activated: "FUNNEL_SCRATCH_ACTIVATED",
   first_sup: "FUNNEL_FIRST_SUP",
   first_up: "FUNNEL_FIRST_UP",
-  first_unlock: "FUNNEL_FIRST_UNLOCK",
   first_pay: "FUNNEL_FIRST_PAY",
 };
 
@@ -93,7 +95,7 @@ function CellWithTooltip({
   );
 }
 
-export function GrowthFunnelChart({ data }: { data: FunnelRow[] }) {
+export function GrowthFunnelChart({ data, days }: { data: FunnelRow[]; days?: number }) {
   const { t } = useLocale();
 
   const displayData = data.map((d) => ({
@@ -193,7 +195,9 @@ export function GrowthFunnelChart({ data }: { data: FunnelRow[] }) {
         </table>
       </div>
       <p className="text-[10px] text-[var(--secondary-text)]">{t("funnelNote")}</p>
-      <p className="text-[10px] text-[var(--secondary-text)] opacity-60">{t("funnelWindow")}</p>
+      <p className="text-[10px] text-[var(--secondary-text)] opacity-60">
+        {t("funnelWindow").replace("{n}", String(days ?? 30))}
+      </p>
     </div>
   );
 }

@@ -8,6 +8,7 @@ type Row = {
   new_users: number;
   dau: number;
   d1: string;
+  d1_detail?: string | null;
   unlock_users: number;
   unlock_ge2: number;
   payers: number;
@@ -127,7 +128,12 @@ export function DailyTrendTable({ data }: { data: Row[] }) {
               <td className="px-3 py-2 font-medium text-[var(--foreground)]">{formatDate(row.date)}</td>
               <CellWithTooltip value={formatNum(row.new_users)} metricKey="NEW" />
               <CellWithTooltip value={formatNum(row.dau)} metricKey="DAU" />
-              <CellWithTooltip value={row.d1} metricKey="D1_RETENTION" />
+              <td className="px-3 py-2 text-right text-[11px] text-[var(--foreground)]">
+                <span>{row.d1}</span>
+                {row.d1_detail && (
+                  <span className="ml-1 text-[9px] text-[var(--secondary-text)]">({row.d1_detail})</span>
+                )}
+              </td>
               <CellWithTooltip value={formatNum(row.unlock_users)} metricKey="UNLOCK_USERS" />
               <CellWithTooltip value={formatNum(row.unlock_ge2)} metricKey="UNLOCK_GE2" />
               <CellWithTooltip value={formatNum(row.payers)} metricKey="PAYERS" />

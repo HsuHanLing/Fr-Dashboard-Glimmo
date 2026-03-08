@@ -16,20 +16,22 @@ export async function GET(request: Request) {
   try {
     const [rows] = await bigquery.query({ query: getDailyTrendQuery(days, filters) });
     const data = (rows as Record<string, unknown>[]).map((r) => {
+      const cohortSize = Number(r.d1_cohort_size ?? 0);
       const retainedD1 = Number(r.retained_d1 ?? 0);
-      const prevDayNew = Number(r.prev_day_new_users ?? 0);
-      const d1Pct = prevDayNew > 0 ? Math.round((retainedD1 / prevDayNew) * 1000) / 10 : null;
+      const d1Pct = cohortSize > 0 ? Math.round((retainedD1 / cohortSize) * 1000) / 10 : null;
+
       return {
-      date: String(r.date),
-      new_users: Number(r.new_users ?? 0),
-      dau: Number(r.dau ?? 0),
-      d1: d1Pct !== null ? `${d1Pct}%` : "—",
-      unlock_users: Number(r.unlock_users ?? 0),
-      unlock_ge2: Math.round(Number(r.unlock_users ?? 0) * 0.6),
-      payers: Number(r.payers ?? 0),
-      revenue: Number(r.revenue ?? 0),
-      withdrawal: Number((r.revenue ?? 0)) * 0.2,
-    };
+        date: String(r.date),
+        new_users: Number(r.new_users ?? 0),
+        dau: Number(r.dau ?? 0),
+        d1: d1Pct !== null ? `${d1Pct}%` : "—",
+        d1_detail: cohortSize > 0 ? `${retainedD1}/${cohortSize}` : null,
+        unlock_users: Number(r.unlock_users ?? 0),
+        unlock_ge2: Number(r.unlock_ge2 ?? 0),
+        payers: Number(r.payers ?? 0),
+        revenue: Math.round(Number(r.revenue ?? 0) * 100) / 100,
+        withdrawal: Math.round(Number(r.withdrawal ?? 0) * 100) / 100,
+      };
     });
     return NextResponse.json(data);
   } catch (error) {

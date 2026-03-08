@@ -6,19 +6,19 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const days = parseInt(searchParams.get("days") || "7", 10);
+    const days = parseInt(searchParams.get("days") || "30", 10);
 
   try {
     const [rows] = await bigquery.query({
       query: getGrowthFunnelQuery(days),
     });
     const r = (rows as { step: string; users: number }[]) || [];
-    const signupCount = r.find((x) => x.step === "signup")?.users ?? 0;
+    const firstOpenCount = r.find((x) => x.step === "first_open")?.users ?? 0;
     const data = r.map((x) => ({
       step: x.step,
       stepLabel: x.step,
       users: Number(x.users ?? 0),
-      conversion: signupCount > 0 ? Math.round((Number(x.users ?? 0) / signupCount) * 1000) / 10 : 0,
+      conversion: firstOpenCount > 0 ? Math.round((Number(x.users ?? 0) / firstOpenCount) * 1000) / 10 : 0,
     }));
     return NextResponse.json(data);
   } catch (error) {
