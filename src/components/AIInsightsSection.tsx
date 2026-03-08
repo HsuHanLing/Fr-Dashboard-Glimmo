@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+
+const STORAGE_KEY = "fr-dashboard-ai-insights";
 
 /* ---- types matching the new prompt structure ---- */
 type FlywheelNode = { node: string; status: string; score: number; current_metric: string; benchmark: string; diagnosis: string; fix: string };
@@ -251,6 +253,63 @@ function renderSection(section: Section) {
   }
 }
 
+function buildDownloadText(sections: Section[] | null, rawText: string | null, generatedAt: string | null): string {
+  const header = [
+    "AHOY ANALYTICS CENTER - AI Insights",
+    generatedAt ? `Generated: ${new Date(generatedAt).toLocaleString()}` : "",
+    "",
+  ].filter(Boolean).join("\n");
+
+  if (rawText) return header + rawText;
+
+  if (!sections?.length) return header + "(No content)";
+
+  const lines: string[] = [header];
+  for (const section of sections) {
+    lines.push(`## ${section.title}`);
+    lines.push("");
+    const first = "sections" in section && Array.isArray(section.sections) ? section.sections[0] : null;
+    if (first && "node" in first && "diagnosis" in first) {
+      for (const node of section.sections as FlywheelNode[]) {
+        lines.push(`- ${node.node}: ${node.status} (${node.score}/10)`);
+        lines.push(`  Current: ${node.current_metric} | Benchmark: ${node.benchmark}`);
+        lines.push(`  Diagnosis: ${node.diagnosis}`);
+        lines.push(`  Fix: ${node.fix}`);
+        lines.push("");
+      }
+      if ("bottleneck" in section) lines.push(`Bottleneck: ${(section as FlywheelSection).bottleneck}`);
+      if ("flywheel_momentum" in section) lines.push(`Momentum: ${(section as FlywheelSection).flywheel_momentum}`);
+    } else if (first && "topic" in first && "finding" in first) {
+      const sec = section as MonetizationSection;
+      for (const t of sec.sections) {
+        lines.push(`- ${t.topic}: ${t.finding}`);
+        lines.push(`  Action: ${t.action}`);
+      }
+      if (sec.revenue_projection) lines.push(`Revenue projection: ${sec.revenue_projection}`);
+    } else if ("channels" in section) {
+      for (const ch of (section as ChannelSection).channels) {
+        lines.push(`- ${ch.channel}: ${ch.verdict} | ${ch.volume} | ${ch.reason}`);
+      }
+    } else if ("findings" in section) {
+      for (const f of (section as RetentionSection).findings) {
+        lines.push(`- ${f.insight}: ${f.action}`);
+      }
+    } else if ("markets" in section) {
+      for (const m of (section as GeoSection).markets) {
+        lines.push(`- ${m.country}: ${m.users} | ${m.strategy}`);
+      }
+    } else if ("actions" in section) {
+      for (const a of (section as ActionsSection).actions) {
+        lines.push(`${a.priority}. ${a.action} (${a.flywheel_node})`);
+      }
+    } else {
+      lines.push(JSON.stringify(section, null, 2));
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 /* ---- Main Component ---- */
 export function AIInsightsSection({ dashboardData, t }: Props) {
   const [sections, setSections] = useState<Section[] | null>(null);
@@ -259,6 +318,24 @@ export function AIInsightsSection({ dashboardData, t }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+      if (!raw) return;
+      const data = JSON.parse(raw) as { sections?: Section[]; rawText?: string; generatedAt?: string };
+      if (data.sections?.length) {
+        setSections(data.sections);
+        const all: Record<string, boolean> = {};
+        for (const s of data.sections) all[s.id] = true;
+        setExpanded(all);
+      }
+      if (data.rawText) setRawText(data.rawText);
+      if (data.generatedAt) setGeneratedAt(data.generatedAt);
+    } catch {
+      // ignore invalid stored data
+    }
+  }, []);
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -273,21 +350,43 @@ export function AIInsightsSection({ dashboardData, t }: Props) {
       });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
+      const at = data.generated_at || new Date().toISOString();
+      setGeneratedAt(at);
       if (data.sections) {
         setSections(data.sections);
         const all: Record<string, boolean> = {};
         for (const s of data.sections) all[s.id] = true;
         setExpanded(all);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ sections: data.sections, generatedAt: at }));
+        } catch {
+          // ignore quota
+        }
       } else if (data.raw) {
         setRawText(data.raw);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ rawText: data.raw, generatedAt: at }));
+        } catch {
+          // ignore quota
+        }
       }
-      setGeneratedAt(data.generated_at || new Date().toISOString());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, [dashboardData]);
+
+  const downloadReport = useCallback(() => {
+    const text = buildDownloadText(sections, rawText, generatedAt);
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ai-insights-${generatedAt ? new Date(generatedAt).toISOString().slice(0, 10) : "report"}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [sections, rawText, generatedAt]);
 
   const toggleSection = (id: string) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -311,6 +410,19 @@ export function AIInsightsSection({ dashboardData, t }: Props) {
               <span className="text-[9px] text-[var(--secondary-text)]">
                 {new Date(generatedAt).toLocaleString()}
               </span>
+            )}
+            {(sections || rawText) && (
+              <button
+                type="button"
+                onClick={downloadReport}
+                className="flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]/20"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                  <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                  <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                </svg>
+                {t("aiDownload")}
+              </button>
             )}
             <button
               onClick={generate}

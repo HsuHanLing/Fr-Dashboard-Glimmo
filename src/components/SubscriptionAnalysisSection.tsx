@@ -36,6 +36,7 @@ type KPI = {
   auto_convert: number;
   manual_convert: number;
   total_paid: number;
+  total_wallet_sub: number;
   paid_revenue: number;
   nonmember_hint: number;
   membership_entry: number;
@@ -96,9 +97,11 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
     );
   }
 
-  const totalSubscribers = kpi.total_exchange + kpi.total_paid;
+  const walletSub = kpi.total_wallet_sub ?? 0;
+  const totalSubscribers = kpi.total_exchange + kpi.total_paid + walletSub;
   const exchangePct = totalSubscribers > 0 ? ((kpi.total_exchange / totalSubscribers) * 100).toFixed(1) : "0";
   const paidPct = totalSubscribers > 0 ? ((kpi.total_paid / totalSubscribers) * 100).toFixed(1) : "0";
+  const walletPct = totalSubscribers > 0 ? ((walletSub / totalSubscribers) * 100).toFixed(1) : "0";
   const iapSuccessRate = kpi.iap_start > 0 ? ((kpi.total_paid / kpi.iap_start) * 100).toFixed(1) : "0";
 
   const methodLabels: Record<string, string> = { diamond: "Diamond → VIP", cash: "Cash → VIP", unknown: "Other" };
@@ -115,7 +118,7 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
         <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("subAnalysisDesc")}</p>
 
         {/* KPI Cards */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div className="rounded-lg p-3" style={subCardStyle}>
             <p className="text-[10px] font-medium text-[var(--secondary-text)]">
               {t("subTotalSubs")}
@@ -138,6 +141,14 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
             </p>
             <p className="mt-1 text-xl font-bold text-[#4285f4]">{kpi.total_paid.toLocaleString()}</p>
             <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">{paidPct}% of total</p>
+          </div>
+          <div className="rounded-lg p-3" style={subCardStyle}>
+            <p className="text-[10px] font-medium text-[var(--secondary-text)]">
+              {t("subWallet")}
+              <InfoTooltip metricKey="SUB_WALLET" />
+            </p>
+            <p className="mt-1 text-xl font-bold text-[var(--secondary-text)]">{walletSub.toLocaleString()}</p>
+            <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">{walletPct}% of total</p>
           </div>
           <div className="rounded-lg p-3" style={subCardStyle}>
             <p className="text-[10px] font-medium text-[var(--secondary-text)]">

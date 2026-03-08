@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       auto_convert_users: number;
       manual_convert_users: number;
       paid_sub_users: number;
+      wallet_sub_users: number;
       nonmember_hint_users: number;
       membership_entry_users: number;
       iap_start_users: number;
@@ -31,6 +32,7 @@ export async function GET(request: Request) {
       auto_convert: Number(d.auto_convert_users ?? 0),
       manual_convert: Number(d.manual_convert_users ?? 0),
       paid: Number(d.paid_sub_users ?? 0),
+      wallet_sub: Number(d.wallet_sub_users ?? 0),
       nonmember_hint: Number(d.nonmember_hint_users ?? 0),
       membership_entry: Number(d.membership_entry_users ?? 0),
       iap_start: Number(d.iap_start_users ?? 0),
@@ -44,6 +46,7 @@ export async function GET(request: Request) {
       auto_convert: Number(r.total_auto_convert ?? 0),
       manual_convert: Number(r.total_manual_convert ?? 0),
       total_paid: Number(r.total_paid_sub ?? 0),
+      total_wallet_sub: Number(r.total_wallet_sub ?? 0),
       paid_revenue: Math.round(Number(r.paid_revenue ?? 0) * 100) / 100,
       nonmember_hint: Number(r.total_nonmember_hint ?? 0),
       membership_entry: Number(r.total_membership_entry ?? 0),

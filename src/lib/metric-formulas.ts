@@ -172,20 +172,24 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   },
   // Subscription / VIP
   SUB_TOTAL: {
-    formula: "COUNT(DISTINCT exchange_users) + COUNT(DISTINCT paid_sub_users)",
-    description: "Total subscribers: users who became VIP either through in-app cash/diamond exchange or real-money subscription.",
+    formula: "Exchange + Paid (real $) + Wallet (in-app cash)",
+    description: "Total subscribers: exchange (cash/diamond), real-money subscription, and wallet_subscribe_success (in-app cash wallet).",
   },
   SUB_EXCHANGE: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('auto_convert_trigger', 'Click_CashWalletConfirmConvert')",
     description: "Users who converted to VIP by exchanging in-app cash or diamonds. Includes both auto-convert (triggered automatically) and manual convert (user initiated).",
   },
   SUB_PAID: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'wallet_subscribe_success') OR (iap_success WHERE product_id='subscription')",
-    description: "Users who paid real money to subscribe (monthly/yearly). Excludes one-time top-up coin purchases.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew') OR (iap_success AND product_id='subscription')",
+    description: "Users who paid real money to subscribe (App Store / Google Play or IAP subscription). Excludes wallet_subscribe_success (in-app cash wallet) and top-up.",
+  },
+  SUB_WALLET: {
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'wallet_subscribe_success'",
+    description: "Users who subscribed using in-app cash wallet (not real money). Does not contribute to Paid Sub Revenue.",
   },
   SUB_PAID_REVENUE: {
-    formula: "SUM(event_value_in_usd) WHERE event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew')",
-    description: "Total USD revenue from real-money subscription purchases only. Does not include top-up revenue.",
+    formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','app_store_subscription_convert','app_store_subscription_renew') AND (event_name IN ('app_store_subscription_convert','app_store_subscription_renew') OR product_type/item_category LIKE '%sub%' OR product_id='subscription')",
+    description: "Subscription plan revenue: purchase/in_app_purchase events classified as subscription by product_type, item_category, or product_id. Same source as Monetization Subscription stream. Excludes wallet (in-app cash) and top-up.",
   },
   SUB_IAP_SUCCESS: {
     formula: "(Subscription paid users / Subscription IAP start users) × 100%",

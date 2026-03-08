@@ -988,9 +988,11 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
         COUNT(DISTINCT CASE WHEN event_name = 'Click_CashWalletConfirmConvert'
           THEN user_pseudo_id END) as manual_convert_users,
         COUNT(DISTINCT CASE WHEN (
-          event_name IN ('app_store_subscription_convert','app_store_subscription_renew','wallet_subscribe_success')
+          event_name IN ('app_store_subscription_convert','app_store_subscription_renew')
           OR (event_name = 'iap_success' AND product_id = 'subscription')
         ) THEN user_pseudo_id END) as paid_sub_users,
+        COUNT(DISTINCT CASE WHEN event_name = 'wallet_subscribe_success'
+          THEN user_pseudo_id END) as wallet_sub_users,
         COUNT(DISTINCT CASE WHEN event_name = 'nonmember_exchange_hint'
           THEN user_pseudo_id END) as nonmember_hint_users,
         COUNT(DISTINCT CASE WHEN event_name = 'click_membership_entry'
@@ -1013,9 +1015,11 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
         COUNT(DISTINCT CASE WHEN event_name = 'Click_CashWalletConfirmConvert'
           THEN user_pseudo_id END) as total_manual_convert,
         COUNT(DISTINCT CASE WHEN (
-          event_name IN ('app_store_subscription_convert','app_store_subscription_renew','wallet_subscribe_success')
+          event_name IN ('app_store_subscription_convert','app_store_subscription_renew')
           OR (event_name = 'iap_success' AND product_id = 'subscription')
         ) THEN user_pseudo_id END) as total_paid_sub,
+        COUNT(DISTINCT CASE WHEN event_name = 'wallet_subscribe_success'
+          THEN user_pseudo_id END) as total_wallet_sub,
         COUNT(DISTINCT CASE WHEN event_name = 'nonmember_exchange_hint'
           THEN user_pseudo_id END) as total_nonmember_hint,
         COUNT(DISTINCT CASE WHEN event_name = 'click_membership_entry'
@@ -1024,9 +1028,6 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
           THEN user_pseudo_id END) as total_iap_start,
         COUNT(DISTINCT CASE WHEN event_name = 'iap_fail'
           THEN user_pseudo_id END) as total_iap_fail,
-        COALESCE(SUM(CASE WHEN event_name IN (
-          'app_store_subscription_convert','app_store_subscription_renew')
-          THEN event_value_in_usd END), 0) as paid_revenue,
         COUNT(DISTINCT CASE WHEN event_name IN ('auto_convert_trigger',
           'Click_CashWalletConfirmConvert') THEN user_pseudo_id END) as total_exchange_users,
         COUNT(DISTINCT CASE WHEN (event_name = 'iap_start' AND product_id LIKE 'top-up%')
@@ -1046,12 +1047,27 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
       WHERE ${tableFilter(days)}
         AND event_name = 'Click_CashWalletConfirmConvert'
       GROUP BY 1
+    ),
+    -- Subscription plan revenue: purchase/in_app_purchase with subscription product_type/item_category/product_id (same as Monetization Subscription stream)
+    sub_plan_revenue AS (
+      SELECT COALESCE(SUM(event_value_in_usd), 0) as amt
+      FROM \`${dataset()}.${table()}\`
+      WHERE ${tableFilter(days)}
+        AND event_name IN ('purchase', 'in_app_purchase', 'app_store_subscription_convert', 'app_store_subscription_renew')
+        AND event_value_in_usd > 0
+        AND (
+          event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew')
+          OR LOWER(COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_type'), '')) LIKE '%sub%'
+          OR LOWER(COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'item_category'), '')) LIKE '%sub%'
+          OR COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'), '') = 'subscription'
+        )
     )
     SELECT
       (SELECT ARRAY_AGG(STRUCT(date, dt, auto_convert_users, manual_convert_users,
-        paid_sub_users, nonmember_hint_users, membership_entry_users,
+        paid_sub_users, wallet_sub_users, nonmember_hint_users, membership_entry_users,
         iap_start_users, iap_fail_users, topup_start_users, topup_success_users) ORDER BY dt ASC) FROM daily) as daily_data,
       t.*,
+      (SELECT amt FROM sub_plan_revenue) as paid_revenue,
       (SELECT ARRAY_AGG(STRUCT(convert_method, conversions)) FROM convert_amounts) as convert_methods
     FROM totals t
   `;
