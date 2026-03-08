@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { TranslationKey } from "@/lib/i18n";
 import { METRIC_FORMULAS } from "@/lib/metric-formulas";
 
 type HealthData = {
@@ -17,7 +18,7 @@ type HealthData = {
 
 type HealthRow = {
   id: string;
-  labelKey: string;
+  labelKey: TranslationKey;
   formulaKey: string;
   isNorthStar: boolean;
   healthy: string;
@@ -86,7 +87,7 @@ function formatCurrent(row: HealthRow): string {
 }
 
 type Props = {
-  t: (key: string) => string;
+  t: (key: TranslationKey) => string;
 };
 
 export function FlywheelHealthDashboard({ t }: Props) {

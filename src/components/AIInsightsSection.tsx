@@ -270,7 +270,8 @@ function buildDownloadText(sections: Section[] | null, rawText: string | null, g
     lines.push("");
     const first = "sections" in section && Array.isArray(section.sections) ? section.sections[0] : null;
     if (first && "node" in first && "diagnosis" in first) {
-      for (const node of section.sections as FlywheelNode[]) {
+      const flySection = section as FlywheelSection;
+      for (const node of flySection.sections) {
         lines.push(`- ${node.node}: ${node.status} (${node.score}/10)`);
         lines.push(`  Current: ${node.current_metric} | Benchmark: ${node.benchmark}`);
         lines.push(`  Diagnosis: ${node.diagnosis}`);
