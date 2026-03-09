@@ -4,8 +4,8 @@
 
 export const METRIC_FORMULAS: Record<string, { formula: string; description: string }> = {
   DAU: {
-    formula: "COUNT(DISTINCT user_pseudo_id) per day",
-    description: "Daily Active Users: unique users who had at least one session that day.",
+    formula: "COUNT(DISTINCT user_pseudo_id) per day, geo.country NOT IN ('Hong Kong','China','Singapore')",
+    description: "Daily Active Users: unique users with activity that day, excluding HK/CN/SG.",
   },
   D1_RETENTION: {
     formula: "(Users who returned on D1 / New users on D0) × 100%",
@@ -34,6 +34,10 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   NEW: {
     formula: "COUNT(DISTINCT user_pseudo_id) where event_name = 'first_open'",
     description: "New users: first-time app opens.",
+  },
+  DAILY_REGISTRATION: {
+    formula: "COUNT(DISTINCT user_pseudo_id) per day where: (1) event_name IN ('Success_GoogleRegister','Register_Number_Success','Register_Email_Success','Success_AppleRegister') OR (2) event_name='auth_oauth_result' AND EXISTS(event_params key='result' value.string_value='success'); AND geo.country NOT IN ('Hong Kong','China','Singapore').",
+    description: "Daily completed registrations: Google/Apple/Email/Phone success events or auth_oauth_result with result=success. Excludes Hong Kong, China, Singapore. Affected by Overview geo filter when applied.",
   },
   UNLOCK_USERS: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('video_unlock_success','dollarsup_first_unlock_success','video_click_unlock')",
@@ -437,5 +441,98 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   HEALTH_MONTHLY_REVENUE: {
     formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','app_store_subscription_convert','app_store_subscription_renew'), 30d",
     description: "Total revenue in the last 30 days from in-app and subscription purchases.",
+  },
+  // Registration Funnel (auth_screen_view, auth_entry_click, auth_submit_result, etc.)
+  REG_APP_OPEN: {
+    formula: "event_name = 'first_open'",
+    description: "App first open (install). Cohort base for the registration funnel.",
+  },
+  REG_APP_OPEN_NO_CLICK: {
+    formula: "first_open 用户，且以下埋点均无数据（任一有数据则不计入 No action）：(1) Auth/注册: auth_entry_click, auth_nickname_next, auth_submit_result, auth_oauth_result, auth_method_switch; Success_GoogleRegister, Success_AppleRegister, Register_Email_Success, Register_Number_Success, Login_Email_Success, Login_Number_Success, signin_credit_earned. (2) 进入主站: screen_view/All_PageBehavior/auth_screen_view（在 reg 之后）. (3) 渠道点击: auth_entry_click 的 cta_name=google|apple|email|phone，auth_method_switch 的 provider=google|apple. (4) 看视频: video_start, video_play, video_complete, video_end, Video_Complete, Click_Sup. (5) 加好友/邀请: event_name 含 follow/friend，或 add_friend, follow_user, user_follow, InviteFriendViaText_Success, profile_top_button_click, other_profile_top_button_click. (6) 个人主页: screen_view/All_PageBehavior/auth_screen_view 且 screen_name 含 profile 或为 my_profile/user_profile/profile/personal_home/me. (7) 拍摄: event_name 含 record/shoot/capture/publish，或 video_record_start, shoot_start, publish_video, create_video, record_start.",
+    description: "仅 first_open 后上述全部埋点均无数据的用户计入 No action。",
+  },
+  REG_LOGIN_HOME: {
+    formula: "event_name = 'auth_screen_view' AND screen_name = 'login_home'",
+    description: "认证页面曝光：登录首页渲染完成。Params: screen_name=login_home, auth_method, has_login_record.",
+  },
+  REG_AUTH_ENTRY_CLICK: {
+    formula: "event_name = 'auth_entry_click'",
+    description: "First entry: any Continue or Sign up click on login home.",
+  },
+  REG_CLICK_SIGNUP: {
+    formula: "event_name = 'auth_entry_click' AND cta_name = 'signup'",
+    description: "Sign up button click only (not Continue).",
+  },
+  REG_NICKNAME: {
+    formula: "event_name = 'auth_screen_view' AND screen_name = 'nickname'",
+    description: "认证页面曝光：昵称页渲染完成。",
+  },
+  REG_AUTH_NICKNAME_NEXT: {
+    formula: "event_name = 'auth_nickname_next'",
+    description: "昵称页点击下一步：昵称不为空且点击 Next。Params: to_method=email（默认跳Email注册页）.",
+  },
+  REG_REGISTER: {
+    formula: "event_name = 'auth_screen_view' AND screen_name = 'register'",
+    description: "认证页面曝光：注册页渲染完成。",
+  },
+  REG_CAPTCHA: {
+    formula: "event_name = 'auth_screen_view' AND screen_name = 'captcha'",
+    description: "认证页面曝光：真人验证页渲染完成。",
+  },
+  REG_OTP_VERIFY: {
+    formula: "event_name = 'auth_screen_view' AND screen_name = 'otp_verify'",
+    description: "认证页面曝光：验证码页渲染完成。仅电话（Phone）注册路径会经过此步；Google/Apple/Email 路径不需要 OTP。",
+  },
+  REG_REGISTERED: {
+    formula: "event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success','signin_credit_earned','auth_submit_result','auth_oauth_result')",
+    description: "Registered users (same definition as Growth Funnel).",
+  },
+  REG_METHOD_GOOGLE: {
+    formula: "Success_GoogleRegister OR auth_oauth_result provider=google result=success OR auth_method_switch provider=google result=success",
+    description: "Users who completed registration via Google.",
+  },
+  REG_METHOD_APPLE: {
+    formula: "Success_AppleRegister OR auth_oauth_result provider=apple result=success OR auth_method_switch provider=apple result=success",
+    description: "Users who completed registration via Apple.",
+  },
+  REG_METHOD_EMAIL: {
+    formula: "auth_submit_result result=success auth_method=email OR Register_Email_Success OR Login_Email_Success",
+    description: "Users who completed registration via Email.",
+  },
+  REG_METHOD_PHONE: {
+    formula: "auth_submit_result result=success auth_method=phone OR Register_Number_Success OR Login_Number_Success",
+    description: "Users who completed registration via Phone.",
+  },
+  REG_CHANNEL_GOOGLE_CLICKED: {
+    formula: "auth_entry_click cta_name=google OR auth_method_switch provider=google",
+    description: "Users who chose Google login (any result).",
+  },
+  REG_CHANNEL_APPLE_CLICKED: {
+    formula: "auth_entry_click cta_name=apple OR auth_method_switch provider=apple",
+    description: "Users who chose Apple login (any result).",
+  },
+  REG_CHANNEL_EMAIL_CLICKED: {
+    formula: "auth_entry_click cta_name=email",
+    description: "Users who chose Email signup path.",
+  },
+  REG_CHANNEL_PHONE_CLICKED: {
+    formula: "auth_entry_click cta_name=phone",
+    description: "Users who chose Phone signup path.",
+  },
+  REG_CHANNEL_FAILURE: {
+    formula: "Clicked − Success (same events as Clicked, minus those who reached Success)",
+    description: "Users who clicked this channel but did not complete registration.",
+  },
+  REG_ONBOARDING_COMPLETE: {
+    formula: "event_name = 'onb_guide_complete' AND result = 'success'",
+    description: "新手引导完成（4 步引导结束）。",
+  },
+  REG_ENTER_MAIN: {
+    formula: "First screen_view / auth_screen_view after registration success",
+    description: "注册成功后首次进入主流程页面（任意页面曝光）。",
+  },
+  REG_FUNNEL_CONVERSION: {
+    formula: "(Users at step / App Open users) × 100%",
+    description: "该步骤相对「打开 App」的转化率。",
   },
 };

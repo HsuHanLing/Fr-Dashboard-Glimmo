@@ -11,7 +11,8 @@ export async function GET(request: Request) {
   const version = searchParams.get("version") || undefined;
   const userSegment = searchParams.get("userSegment") || undefined;
   const platform = searchParams.get("platform") || undefined;
-  const filters = (channel || version || userSegment || platform) ? { channel, version, userSegment, platform } : undefined;
+  const geo = searchParams.get("geo") || undefined;
+  const filters = (channel || version || userSegment || platform || geo) ? { channel, version, userSegment, platform, geo } : undefined;
 
   try {
     const [rows] = await bigquery.query({ query: getDailyTrendQuery(days, filters) });
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
       return {
         date: String(r.date),
         new_users: Number(r.new_users ?? 0),
+        registration: Number(r.registration ?? 0),
         dau: Number(r.dau ?? 0),
         d1: d1Pct !== null ? `${d1Pct}%` : "—",
         d1_detail: cohortSize > 0 ? `${retainedD1}/${cohortSize}` : null,

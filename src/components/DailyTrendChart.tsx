@@ -15,6 +15,7 @@ type TrendRow = {
   date: string;
   dau: number;
   new_users: number;
+  registration: number;
   unlock_users: number;
   payers: number;
   revenue: number;
@@ -63,6 +64,7 @@ export function DailyTrendChart({ data }: { data: TrendRow[] }) {
             formatter={(value) => <span style={{ color: "var(--secondary-text)", fontSize: 9 }}>{value}</span>}
           />
           <Line type="monotone" dataKey="dau" stroke="#4285f4" strokeWidth={2} name="DAU" dot={false} />
+          <Line type="monotone" dataKey="registration" stroke="#9c27b0" strokeWidth={2} name="Registration" dot={false} />
           <Line type="monotone" dataKey="unlock_users" stroke="#34a853" strokeWidth={2} name="Unlock users" dot={false} />
           <Line type="monotone" dataKey="payers" stroke="#fbbc04" strokeWidth={2} name="Paying users" dot={false} />
           <Line type="monotone" dataKey="revenue" stroke="#ea4335" strokeWidth={2} name="Revenue ($)" dot={false} />

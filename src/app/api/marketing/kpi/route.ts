@@ -23,7 +23,8 @@ export async function GET(request: Request) {
   const version = searchParams.get("version") || undefined;
   const userSegment = searchParams.get("userSegment") || undefined;
   const platform = searchParams.get("platform") || undefined;
-  const filters = (channel || version || userSegment || platform) ? { channel, version, userSegment, platform } : undefined;
+  const geo = searchParams.get("geo") || undefined;
+  const filters = (channel || version || userSegment || platform || geo) ? { channel, version, userSegment, platform, geo } : undefined;
 
   try {
     const [rows] = await bigquery.query({ query: getKPIAndWowQuery(mode, filters) });

@@ -49,6 +49,7 @@ type KPI = {
 type DailyRow = {
   date: string;
   new_users: number;
+  registration: number;
   dau: number;
   d1: string;
   d1_detail?: string | null;
@@ -82,6 +83,7 @@ export default function DashboardPage() {
   const [kpiMode, setKpiMode] = useState<"today" | "7d" | "30d">("today");
   const [trendDays, setTrendDays] = useState(7);
   const [filterChannel, setFilterChannel] = useState("all");
+  const [filterGeo, setFilterGeo] = useState("all");
   const [filterVersion, setFilterVersion] = useState("all");
   const [filterUserSegment, setFilterUserSegment] = useState("all");
   const [filterPlatform, setFilterPlatform] = useState("all");
@@ -93,6 +95,8 @@ export default function DashboardPage() {
   const [creatorSupply, setCreatorSupply] = useState<{ weekly: { week: string; kol_earnings: number; regular_earnings: number }[]; metrics: Record<string, number> } | null>(null);
   const [growthFunnel, setGrowthFunnel] = useState<{ step: string; stepLabel: string; users: number; conversion: number }[]>([]);
   const [retention, setRetention] = useState<{ chart: { day: string; rate: number; wow: number }[] }>({ chart: [] });
+  const [retentionUnlock, setRetentionUnlock] = useState<{ chart: { day: string; rate: number; wow: number }[] }>({ chart: [] });
+  const [retentionCohortTab, setRetentionCohortTab] = useState<"signup" | "unlock">("signup");
   const [monetization, setMonetization] = useState<{ revenue_stream: string; revenue: number; share: number }[]>([]);
   const [economyHealth, setEconomyHealth] = useState<{ chart: { indicator: string; value: number; label: string }[]; metrics: { indicator: string; value: string }[]; segment?: string; active_users?: number } | null>(null);
   const [econSegment, setEconSegment] = useState<"all" | "paid">("all");
@@ -106,6 +110,7 @@ export default function DashboardPage() {
   const [userAcquisition, setUserAcquisition] = useState<{ channels: { source: string; medium: string; channel: string; channel_desc: string; campaign: string; campaign_label: string; new_users: number; payers: number; revenue: number; conversion: number }[]; channelsSummary: { channel: string; channel_desc: string; new_users: number; payers: number; revenue: number; conversion: number }[]; referrals: { source: string; campaign: string; campaign_label: string; medium: string; channel: string; channel_desc: string; events: number; users: number }[] }>({ channels: [], channelsSummary: [], referrals: [] });
   const [flywheelData, setFlywheelData] = useState<{ nodes: { id: string; name: string; nameCn: string; metrics: Record<string, number>; status: "healthy" | "warning" | "broken"; score: number; conversion: number | null; benchmark: string }[]; overallScore: number; summary: Record<string, number>; days: number }>({ nodes: [], overallScore: 0, summary: {}, days: 30 });
   const [subscriptionData, setSubscriptionData] = useState<{ kpi: { total_exchange: number; auto_convert: number; manual_convert: number; total_paid: number; total_wallet_sub: number; paid_revenue: number; nonmember_hint: number; membership_entry: number; iap_start: number; iap_fail: number; topup_start: number; topup_success: number } | null; daily: { date: string; exchange: number; auto_convert: number; manual_convert: number; paid: number; nonmember_hint: number; membership_entry: number; iap_start: number; iap_fail: number; topup_start: number; topup_success: number }[]; funnel: { step: string; label: string; users: number }[]; convertMethods: { method: string; count: number }[] }>({ kpi: null, daily: [], funnel: [], convertMethods: [] });
+  const [registrationFunnelData, setRegistrationFunnelData] = useState<{ funnel: { step: string; users: number; fromTop: number }[]; channels: { channel: string; clicked: number; success: number; failure: number }[] } | null>(null);
   const [analyticsDays, setAnalyticsDays] = useState(30);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "growth" | "monetization" | "flywheel" | "ai">("overview");
@@ -132,13 +137,14 @@ export default function DashboardPage() {
       if (filterVersion !== "all") params.set("version", filterVersion);
       if (filterUserSegment !== "all") params.set("userSegment", filterUserSegment);
       if (filterPlatform !== "all") params.set("platform", filterPlatform);
+      if (filterGeo !== "all") params.set("geo", filterGeo);
       const r = await fetch(`/api/marketing/kpi?${params}`);
       const j = await r.json();
       if (j.error) throw new Error(j.error);
       setKpi(j);
     }
     fetchKPI().catch((e) => setError(String(e)));
-  }, [kpiMode, filterChannel, filterVersion, filterUserSegment, filterPlatform]);
+  }, [kpiMode, filterChannel, filterVersion, filterUserSegment, filterPlatform, filterGeo]);
 
   // Overview data: daily trend + overview
   useEffect(() => {
@@ -150,6 +156,7 @@ export default function DashboardPage() {
       if (filterVersion !== "all") params.set("version", filterVersion);
       if (filterUserSegment !== "all") params.set("userSegment", filterUserSegment);
       if (filterPlatform !== "all") params.set("platform", filterPlatform);
+      if (filterGeo !== "all") params.set("geo", filterGeo);
       const qs = `?${params}`;
       try {
         const [dt, o] = await Promise.all([
@@ -165,7 +172,7 @@ export default function DashboardPage() {
       }
     }
     fetchOverviewData();
-  }, [trendDays, filterChannel, filterVersion, filterUserSegment, filterPlatform]);
+  }, [trendDays, filterChannel, filterVersion, filterUserSegment, filterPlatform, filterGeo]);
 
   // Analytics data: all analytics sections use analyticsDays
   useEffect(() => {
@@ -174,12 +181,14 @@ export default function DashboardPage() {
       setEconSegment("all");
       const qs = `?days=${analyticsDays}`;
       try {
-        const [ua, geo, cs, gf, ret, mon, eh, cf, um, pu, pg, acq, sub, fw] = await Promise.all([
+        const [ua, geo, cs, gf, regFunnel, ret, retUnlock, mon, eh, cf, um, pu, pg, acq, sub, fw] = await Promise.all([
           fetch(`/api/marketing/user-attributes${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/geo-distribution${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/creator-supply${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/growth-funnel${qs}`).then((r) => (r.ok ? r.json() : [])),
+          fetch(`/api/marketing/registration-funnel${qs}`).then((r) => (r.ok ? r.json() : { funnel: [], channels: [] })),
           fetch(`/api/marketing/retention${qs}`).then((r) => (r.ok ? r.json() : { chart: [] })),
+          fetch(`/api/marketing/retention${qs}&cohort=unlock`).then((r) => (r.ok ? r.json() : { chart: [] })),
           fetch(`/api/marketing/monetization${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/economy-health${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/content-feed${qs}`).then((r) => r.json()),
@@ -194,7 +203,9 @@ export default function DashboardPage() {
         if (Array.isArray(geo)) setGeoDistribution(geo);
         if (cs?.weekly && cs?.metrics) setCreatorSupply(cs);
         if (Array.isArray(gf)) setGrowthFunnel(gf);
+        if (regFunnel?.funnel) setRegistrationFunnelData(regFunnel);
         if (ret?.chart) setRetention(ret);
+        if (retUnlock?.chart) setRetentionUnlock(retUnlock);
         if (Array.isArray(mon)) setMonetization(mon);
         if (eh?.chart && eh?.metrics) setEconomyHealth(eh);
         if (cf?.circle && cf?.featureCards && cf?.exclusives) setContentFeed(cf);
@@ -366,6 +377,30 @@ export default function DashboardPage() {
               </span>
             )}
           </div>
+          <div className="rounded-xl bg-[var(--card-bg)] px-4 py-3" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--secondary-text)]">{t("filterGeo")}</label>
+            <select
+              value={filterGeo}
+              onChange={(e) => setFilterGeo(e.target.value)}
+              disabled={loading}
+              className="min-w-[160px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <option value="all">{t("all")}</option>
+              <option value="exclude_hk_cn_sg">{t("filterGeoExcludeHKCN")}</option>
+              <option value="US">{t("country_US")}</option>
+              <option value="GB">{t("country_GB")}</option>
+              <option value="IN">{t("country_IN")}</option>
+              <option value="BR">{t("country_BR")}</option>
+              <option value="ID">{t("country_ID")}</option>
+              <option value="DE">{t("country_DE")}</option>
+              <option value="FR">{t("country_FR")}</option>
+              <option value="JP">{t("country_JP")}</option>
+              <option value="KR">{t("country_KR")}</option>
+              <option value="CA">{t("country_CA")}</option>
+              <option value="MX">{t("country_MX")}</option>
+            </select>
+          </div>
         </section>
 
         {/* Core KPI Snapshot */}
@@ -410,7 +445,15 @@ export default function DashboardPage() {
             <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
               {t("filterUserSegment")}: {filterUserSegment === "all" ? t("filterUserAll") : filterUserSegment === "new" ? t("filterUserNew") : filterUserSegment === "old" ? t("filterUserOld") : t("filterUserReturning")}
             </span>
+            <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+              {t("filterGeo")}: {filterGeo === "all" ? t("all") : filterGeo === "exclude_hk_cn_sg" ? t("filterGeoExcludeHKCN") : t(`country_${filterGeo}` as TranslationKey)}
+            </span>
           </div>
+          {filterGeo === "exclude_hk_cn_sg" && (
+            <p className="mb-4 text-[11px] text-[var(--secondary-text)]" role="note">
+              {t("overviewExcludeNote")}
+            </p>
+          )}
 
           {kpi && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
@@ -520,6 +563,9 @@ export default function DashboardPage() {
                 <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
                   {t("filterUserSegment")}: {filterUserSegment === "all" ? t("filterUserAll") : filterUserSegment === "new" ? t("filterUserNew") : filterUserSegment === "old" ? t("filterUserOld") : t("filterUserReturning")}
                 </span>
+                <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>
+                  {t("filterGeo")}: {filterGeo === "all" ? t("all") : filterGeo === "exclude_hk_cn_sg" ? t("filterGeoExcludeHKCN") : t(`country_${filterGeo}` as TranslationKey)}
+                </span>
           </div>
 
           <div className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
@@ -591,7 +637,7 @@ export default function DashboardPage() {
         {activeTab === "growth" && (
           <>
         {/* Registration Funnel */}
-        <RegistrationFunnelSection analyticsDays={analyticsDays} t={t} />
+        <RegistrationFunnelSection data={registrationFunnelData} loading={analyticsLoading} analyticsDays={analyticsDays} t={t} />
 
         {/* Growth Funnel & Retention */}
         <div className="mb-8 grid gap-4 lg:grid-cols-2">
@@ -609,10 +655,24 @@ export default function DashboardPage() {
             <div className="overflow-visible p-4 sm:p-5">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-semibold tracking-tight">{t("retentionRate")}</h2>
-                <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>{t("signupCohort")}: {analyticsDays}{t("days")}</span>
+                <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>{retentionCohortTab === "unlock" ? t("retentionCohortUnlock") : t("signupCohort")}: {analyticsDays}{t("days")}</span>
               </div>
-              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("retentionDesc")}</p>
-              <div className="mt-4"><RetentionRateChart chart={retention.chart} /></div>
+              <div className="mb-3 flex items-center gap-1.5">
+                {(["signup", "unlock"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setRetentionCohortTab(tab)}
+                    className="rounded-full px-3 py-1 text-[10px] font-medium transition-colors"
+                    style={retentionCohortTab === tab
+                      ? { backgroundColor: "var(--accent)", color: "#fff" }
+                      : { backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}
+                  >
+                    {tab === "signup" ? t("retentionCohortSignup") : t("retentionCohortUnlock")}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{retentionCohortTab === "unlock" ? t("retentionDescUnlock") : t("retentionDesc")}</p>
+              <div className="mt-4"><RetentionRateChart chart={retentionCohortTab === "unlock" ? retentionUnlock.chart : retention.chart} /></div>
             </div>
           </section>
         </div>
@@ -793,6 +853,7 @@ export default function DashboardPage() {
             version: filterVersion,
             userSegment: filterUserSegment,
             platform: filterPlatform,
+            geo: filterGeo,
             kpiMode,
             trendDays,
           },

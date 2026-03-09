@@ -11,6 +11,7 @@ export type OverviewFilters = {
   version?: string;
   userSegment?: string;
   platform?: string;
+  geo?: string;
 };
 
 function tableFilter(days: number) {
@@ -48,6 +49,14 @@ function filterClause(filters: OverviewFilters | undefined, days: number): strin
     }
   }
 
+  if (filters.geo && filters.geo !== "all") {
+    if (filters.geo === "exclude_hk_cn_sg") {
+      parts.push(`geo.country NOT IN ('Hong Kong','China','Singapore')`);
+    } else {
+      parts.push(`geo.country = '${String(filters.geo).replace(/'/g, "''")}'`);
+    }
+  }
+
   if (filters.userSegment && filters.userSegment !== "all") {
     if (filters.userSegment === "new") {
       parts.push(`user_pseudo_id IN (
@@ -63,7 +72,7 @@ function filterClause(filters: OverviewFilters | undefined, days: number): strin
       )`);
     } else if (filters.userSegment === "returning") {
       const lookback = Math.max(days + 14, 30);
-      const filtersNoUser = { channel: filters.channel, version: filters.version, platform: filters.platform };
+      const filtersNoUser = { channel: filters.channel, version: filters.version, platform: filters.platform, geo: filters.geo };
       const extraNoUser = filterClause(filtersNoUser, lookback);
       parts.push(`user_pseudo_id IN (
         WITH user_days AS (
@@ -182,7 +191,7 @@ export function getCampaignsQuery(days: number = 30, limit: number = 20) {
   `;
 }
 
-// KPI & Daily Trend - uses same tableFilter as daily-trend for consistency
+// KPI Snapshot - D1 by return date (yesterday's cohort who returned today)
 export function getKPIAndWowQuery(mode: "today" | "7d" | "30d", filters?: OverviewFilters) {
   const days = mode === "today" ? 8 : mode === "7d" ? 14 : 60;
   const extra = filterClause(filters, days);
@@ -257,6 +266,20 @@ export function getDailyTrendQuery(days: number = 7, filters?: OverviewFilters) 
       WHERE ${tableFilter(days)}${extra}
       GROUP BY event_date
     ),
+    registration_daily AS (
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%Y%m%d', event_date)) as date,
+        COUNT(DISTINCT user_pseudo_id) as registration
+      FROM \`${dataset()}.${table()}\`
+      WHERE ${tableFilter(days)}${extra}
+        AND geo.country NOT IN ('Hong Kong', 'China', 'Singapore')
+        AND (
+          event_name IN ('Success_GoogleRegister','Register_Number_Success','Register_Email_Success','Success_AppleRegister')
+          OR (event_name = 'auth_oauth_result'
+            AND EXISTS (SELECT 1 FROM UNNEST(event_params) ep WHERE ep.key = 'result' AND ep.value.string_value = 'success'))
+        )
+      GROUP BY event_date
+    ),
     unlock_ge2_daily AS (
       SELECT
         FORMAT_DATE('%Y-%m-%d', PARSE_DATE('%Y%m%d', event_date)) as date,
@@ -270,7 +293,7 @@ export function getDailyTrendQuery(days: number = 7, filters?: OverviewFilters) 
         GROUP BY user_pseudo_id, event_date
         HAVING cnt >= 2
       )
-      GROUP BY 1
+        GROUP BY 1
     ),
     signups AS (
       SELECT user_pseudo_id,
@@ -295,12 +318,13 @@ export function getDailyTrendQuery(days: number = 7, filters?: OverviewFilters) 
       ) a ON s.user_pseudo_id = a.user_pseudo_id
         AND a.dt = DATE_ADD(s.signup_dt, INTERVAL 1 DAY)
       WHERE s.signup_dt >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
-        AND s.signup_dt < CURRENT_DATE()
+        AND s.signup_dt < DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
       GROUP BY 1
     )
     SELECT
       d.date,
       d.new_users,
+      COALESCE(r.registration, 0) as registration,
       d.dau,
       d.payers,
       d.revenue,
@@ -310,6 +334,7 @@ export function getDailyTrendQuery(days: number = 7, filters?: OverviewFilters) 
       c.cohort_size as d1_cohort_size,
       c.retained_d1
     FROM daily d
+    LEFT JOIN registration_daily r ON r.date = d.date
     LEFT JOIN d1_cohort c ON c.cohort_date = d.date
     LEFT JOIN unlock_ge2_daily u ON u.date = d.date
     ORDER BY d.dt ASC
@@ -360,24 +385,24 @@ export function getGeoDistributionQuery(days: number = 30) {
 export function getMonetizationQuery(days: number = 30) {
   return `
     WITH classified AS (
-      SELECT
+    SELECT
         CASE
           WHEN event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew')
             THEN 'Subscription'
           WHEN LOWER(COALESCE(
-            (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_type'),
-            (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'item_category'),
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_type'),
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'item_category'),
             ''
           )) LIKE '%sub%'
             THEN 'Subscription'
           ELSE 'Unlock Pack'
         END as revenue_stream,
         event_value_in_usd
-      FROM \`${dataset()}.${table()}\`
-      WHERE ${tableFilter(days)}
+    FROM \`${dataset()}.${table()}\`
+    WHERE ${tableFilter(days)}
         AND event_name IN ('purchase', 'in_app_purchase',
           'app_store_subscription_convert', 'app_store_subscription_renew')
-        AND event_value_in_usd > 0
+      AND event_value_in_usd > 0
     )
     SELECT revenue_stream, SUM(event_value_in_usd) as revenue
     FROM classified
@@ -552,83 +577,210 @@ export function getGrowthFunnelQuery(days: number = 30) {
   `;
 }
 
-// Registration Funnel: first_open → landing (screen_view) → registration (by method) → onboarding complete → enter main page
-// Breaks down registration by method: Google, Apple, Email, Phone
+// Discover event names and firebase_screen values that look registration-page related (for funnel mapping)
+export function getRegistrationRelatedEventsQuery(days: number = 30) {
+  return `
+    SELECT * FROM (
+      SELECT event_name as name, 'event' as type, COUNT(*) as cnt
+      FROM \`${dataset()}.${table()}\`
+      WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY))
+        AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
+        AND (
+          LOWER(event_name) LIKE '%registration%'
+          OR LOWER(event_name) LIKE '%register%'
+          OR LOWER(event_name) LIKE '%signup%'
+          OR LOWER(event_name) LIKE '%sign_up%'
+          OR LOWER(event_name) LIKE '%auth%'
+          OR LOWER(event_name) LIKE '%login%'
+          OR LOWER(event_name) LIKE '%page%'
+          OR LOWER(event_name) LIKE '%name%'
+          OR LOWER(event_name) LIKE '%phone%'
+          OR LOWER(event_name) LIKE '%email%'
+          OR LOWER(event_name) LIKE '%verify%'
+          OR LOWER(event_name) LIKE '%code%'
+          OR LOWER(event_name) LIKE '%otp%'
+        )
+      GROUP BY event_name
+      UNION ALL
+      SELECT name, type, cnt FROM (
+        SELECT
+          COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'firebase_screen'), '(no screen)') as name,
+          'screen' as type,
+          COUNT(*) as cnt
+        FROM \`${dataset()}.${table()}\`
+        WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY))
+          AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
+          AND event_name IN ('screen_view', 'All_PageBehavior')
+        GROUP BY 1
+      )
+      WHERE LOWER(COALESCE(name,'')) LIKE '%registration%'
+         OR LOWER(COALESCE(name,'')) LIKE '%register%'
+         OR LOWER(COALESCE(name,'')) LIKE '%signup%'
+         OR LOWER(COALESCE(name,'')) LIKE '%auth%'
+         OR LOWER(COALESCE(name,'')) LIKE '%login%'
+         OR LOWER(COALESCE(name,'')) LIKE '%page%'
+         OR LOWER(COALESCE(name,'')) LIKE '%name%'
+         OR LOWER(COALESCE(name,'')) LIKE '%phone%'
+         OR LOWER(COALESCE(name,'')) LIKE '%email%'
+         OR LOWER(COALESCE(name,'')) LIKE '%verify%'
+         OR LOWER(COALESCE(name,'')) LIKE '%code%'
+    ) ORDER BY type, cnt DESC
+  `;
+}
+
+// Registration Funnel
 export function getRegistrationFunnelQuery(days: number = 30) {
+  const REG_EVENTS = `(
+    b.event_name IN ('Success_GoogleRegister','Success_AppleRegister',
+      'Register_Email_Success','Register_Number_Success',
+      'Login_Email_Success','Login_Number_Success',
+      'signin_credit_earned','auth_submit_result','auth_oauth_result')
+  )`;
+  const REG_EVENTS_B2 = REG_EVENTS.replace(/\bb\./g, 'b2.');
+
+  const CORE_COUNTRIES = "('US','GB','IN','BR','ID','DE','FR','JP','KR','CA','MX')";
   return `
     WITH base AS (
       SELECT user_pseudo_id, event_date, event_name, event_timestamp,
         (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'result') as result_val,
         (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'provider') as provider,
-        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'flow_type') as flow_type
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'flow_type') as flow_type,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'auth_method') as auth_method,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'screen_name') as screen_name,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'cta_name') as cta_name,
+        COALESCE(geo.country, '') as country
       FROM \`${dataset()}.${table()}\`
       WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${days + 14} DAY))
         AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days + 14} DAY)
     ),
     first_opens AS (
-      SELECT user_pseudo_id, MIN(event_timestamp) as open_ts, MIN(PARSE_DATE('%Y%m%d', event_date)) as open_dt
-      FROM base WHERE event_name = 'first_open'
+      SELECT user_pseudo_id, MIN(event_timestamp) as open_ts, MIN(PARSE_DATE('%Y%m%d', event_date)) as open_dt, ANY_VALUE(b.country) as country
+      FROM base b WHERE b.event_name = 'first_open'
       GROUP BY 1
       HAVING open_dt >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
     ),
     user_events AS (
       SELECT
         s.user_pseudo_id,
-        -- Any registration
-        MIN(CASE WHEN b.event_name IN (
-          'Success_GoogleRegister','Success_AppleRegister',
-          'Register_Email_Success','Register_Number_Success',
-          'Login_Email_Success','Login_Number_Success',
-          'signin_credit_earned','auth_submit_result','auth_oauth_result'
-        ) THEN b.event_timestamp END) as reg_ts,
-        -- Google
+        s.country,
+        -- Any user action after open (click, submit, success — not passive views: screen_view / auth_screen_view)
+        MIN(CASE
+          WHEN b.event_name = 'auth_entry_click'
+            OR b.event_name IN ('auth_nickname_next','auth_submit_result','auth_oauth_result','auth_method_switch')
+            OR b.event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success','signin_credit_earned')
+          THEN b.event_timestamp END
+        ) as any_action_ts,
+        -- First entry: any auth_entry_click (Continue or Sign up)
+        MIN(CASE WHEN b.event_name = 'auth_entry_click' THEN b.event_timestamp END) as auth_entry_click_ts,
+        -- Debug: each action type (for No action breakdown)
+        MIN(CASE WHEN b.event_name = 'auth_nickname_next' THEN b.event_timestamp END) as auth_nickname_next_ts,
+        MIN(CASE WHEN b.event_name = 'auth_submit_result' THEN b.event_timestamp END) as auth_submit_result_ts,
+        MIN(CASE WHEN b.event_name = 'auth_oauth_result' OR b.event_name = 'auth_method_switch' THEN b.event_timestamp END) as auth_oauth_or_switch_ts,
+        MIN(CASE WHEN b.event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success','signin_credit_earned') THEN b.event_timestamp END) as legacy_success_ts,
+        -- Click sign up: auth_entry_click with cta_name='signup' only
+        MIN(CASE WHEN b.event_name = 'auth_entry_click' AND LOWER(COALESCE(b.cta_name,'')) = 'signup' THEN b.event_timestamp END) as click_signup_ts,
+        -- Registered: all registration success events (aligned with growth funnel)
+        MIN(CASE WHEN ${REG_EVENTS} THEN b.event_timestamp END) as reg_ts,
+        -- Landed: first page view after any registration success
+        MIN(CASE WHEN b.event_name IN ('screen_view','All_PageBehavior','auth_screen_view')
+          AND (SELECT MIN(b2.event_timestamp) FROM base b2
+               WHERE b2.user_pseudo_id = s.user_pseudo_id AND ${REG_EVENTS_B2}
+          ) IS NOT NULL
+          AND b.event_timestamp > (SELECT MIN(b2.event_timestamp) FROM base b2
+            WHERE b2.user_pseudo_id = s.user_pseudo_id AND ${REG_EVENTS_B2})
+          THEN b.event_timestamp END) as first_page_after_reg_ts,
+        -- Channel clicks (Google/Apple via auth_entry_click or auth_method_switch)
+        MIN(CASE WHEN (b.event_name = 'auth_entry_click' AND LOWER(COALESCE(b.cta_name,'')) = 'google')
+          OR (b.event_name = 'auth_method_switch' AND LOWER(COALESCE(b.provider,'')) = 'google')
+          THEN b.event_timestamp END) as click_google_ts,
+        MIN(CASE WHEN (b.event_name = 'auth_entry_click' AND LOWER(COALESCE(b.cta_name,'')) = 'apple')
+          OR (b.event_name = 'auth_method_switch' AND LOWER(COALESCE(b.provider,'')) = 'apple')
+          THEN b.event_timestamp END) as click_apple_ts,
+        MIN(CASE WHEN (b.event_name = 'auth_entry_click' AND LOWER(COALESCE(b.cta_name,'')) = 'email')
+          THEN b.event_timestamp END) as click_email_ts,
+        MIN(CASE WHEN (b.event_name = 'auth_entry_click' AND LOWER(COALESCE(b.cta_name,'')) = 'phone')
+          THEN b.event_timestamp END) as click_phone_ts,
+        -- Channel success
         MIN(CASE WHEN b.event_name = 'Success_GoogleRegister'
-          OR (b.event_name = 'auth_oauth_result' AND b.provider = 'google')
+          OR (b.event_name = 'auth_oauth_result' AND LOWER(COALESCE(b.provider,'')) = 'google' AND LOWER(COALESCE(b.result_val,'')) = 'success')
+          OR (b.event_name = 'auth_method_switch' AND LOWER(COALESCE(b.provider,'')) = 'google' AND LOWER(COALESCE(b.result_val,'')) = 'success')
           THEN b.event_timestamp END) as reg_google_ts,
-        -- Apple
         MIN(CASE WHEN b.event_name = 'Success_AppleRegister'
-          OR (b.event_name = 'auth_oauth_result' AND b.provider = 'apple')
+          OR (b.event_name = 'auth_oauth_result' AND LOWER(COALESCE(b.provider,'')) = 'apple' AND LOWER(COALESCE(b.result_val,'')) = 'success')
+          OR (b.event_name = 'auth_method_switch' AND LOWER(COALESCE(b.provider,'')) = 'apple' AND LOWER(COALESCE(b.result_val,'')) = 'success')
           THEN b.event_timestamp END) as reg_apple_ts,
-        -- Email
-        MIN(CASE WHEN b.event_name IN ('Register_Email_Success','Login_Email_Success')
-          OR (b.event_name = 'auth_submit_result' AND b.flow_type = 'signup')
+        MIN(CASE WHEN (b.event_name = 'auth_submit_result' AND LOWER(COALESCE(b.result_val,'')) = 'success' AND LOWER(COALESCE(b.auth_method,'')) = 'email')
+          OR b.event_name = 'Register_Email_Success' OR b.event_name = 'Login_Email_Success'
           THEN b.event_timestamp END) as reg_email_ts,
-        -- Phone
-        MIN(CASE WHEN b.event_name IN ('Register_Number_Success','Login_Number_Success')
+        MIN(CASE WHEN (b.event_name = 'auth_submit_result' AND LOWER(COALESCE(b.result_val,'')) = 'success' AND LOWER(COALESCE(b.auth_method,'')) = 'phone')
+          OR b.event_name = 'Register_Number_Success' OR b.event_name = 'Login_Number_Success'
           THEN b.event_timestamp END) as reg_phone_ts,
-        -- Onboarding complete (success animation done, enter main page)
-        MIN(CASE WHEN (b.event_name = 'onb_guide_complete' AND b.result_val = 'success')
-          THEN b.event_timestamp END) as onb_complete_ts,
-        -- First screen view after registration (entered main page)
-        MIN(CASE WHEN b.event_name IN ('screen_view','All_PageBehavior')
-          AND b.event_timestamp > (
-            SELECT MIN(b2.event_timestamp) FROM base b2
-            WHERE b2.user_pseudo_id = s.user_pseudo_id
-            AND b2.event_name IN (
-              'Success_GoogleRegister','Success_AppleRegister',
-              'Register_Email_Success','Register_Number_Success',
-              'auth_submit_result','auth_oauth_result'
-            )
-          )
-          THEN b.event_timestamp END) as first_page_after_reg_ts
+        -- No-action expansion: 看视频 / 加好友 / 个人主页 / 拍摄 (land = enter_main already above)
+        MIN(CASE WHEN b.event_name IN ('video_start','video_play','video_complete','video_end','Video_Complete','Click_Sup') THEN b.event_timestamp END) as watch_video_ts,
+        MIN(CASE WHEN (b.event_name LIKE '%follow%' OR b.event_name LIKE '%friend%' OR b.event_name IN ('add_friend','follow_user','user_follow','InviteFriendViaText_Success','profile_top_button_click','other_profile_top_button_click')) THEN b.event_timestamp END) as add_friend_ts,
+        MIN(CASE WHEN b.event_name IN ('screen_view','All_PageBehavior','auth_screen_view')
+          AND (LOWER(COALESCE(b.screen_name,'')) LIKE '%profile%' OR LOWER(COALESCE(b.screen_name,'')) IN ('my_profile','user_profile','profile','personal_home','me')) THEN b.event_timestamp END) as profile_view_ts,
+        MIN(CASE WHEN (b.event_name LIKE '%record%' OR b.event_name LIKE '%shoot%' OR b.event_name LIKE '%capture%' OR b.event_name LIKE '%publish%' OR b.event_name IN ('video_record_start','shoot_start','publish_video','create_video','record_start')) THEN b.event_timestamp END) as shooting_ts
       FROM first_opens s
       JOIN base b ON s.user_pseudo_id = b.user_pseudo_id
         AND PARSE_DATE('%Y%m%d', b.event_date) >= s.open_dt
-      GROUP BY 1
+      GROUP BY 1, 2
     )
     SELECT 'app_open' as step, COUNT(*) as users FROM first_opens
+    UNION ALL SELECT 'app_open_no_action', COUNT(*) FROM user_events
+      WHERE auth_entry_click_ts IS NULL
+        AND auth_nickname_next_ts IS NULL
+        AND auth_submit_result_ts IS NULL
+        AND auth_oauth_or_switch_ts IS NULL
+        AND legacy_success_ts IS NULL
+        AND reg_ts IS NULL
+        AND first_page_after_reg_ts IS NULL
+        AND click_google_ts IS NULL
+        AND click_apple_ts IS NULL
+        AND click_email_ts IS NULL
+        AND click_phone_ts IS NULL
+        AND reg_google_ts IS NULL
+        AND reg_apple_ts IS NULL
+        AND reg_email_ts IS NULL
+        AND reg_phone_ts IS NULL
+        AND watch_video_ts IS NULL
+        AND add_friend_ts IS NULL
+        AND profile_view_ts IS NULL
+        AND shooting_ts IS NULL
+    UNION ALL SELECT 'auth_entry_click', COUNT(*) FROM user_events WHERE auth_entry_click_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_auth_entry_click', COUNT(*) FROM user_events WHERE auth_entry_click_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_auth_nickname_next', COUNT(*) FROM user_events WHERE auth_nickname_next_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_auth_submit_result', COUNT(*) FROM user_events WHERE auth_submit_result_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_auth_oauth_or_switch', COUNT(*) FROM user_events WHERE auth_oauth_or_switch_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_legacy_success', COUNT(*) FROM user_events WHERE legacy_success_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_reg', COUNT(*) FROM user_events WHERE reg_ts IS NOT NULL
+    UNION ALL SELECT 'click_signup', COUNT(*) FROM user_events WHERE click_signup_ts IS NOT NULL
     UNION ALL SELECT 'registered', COUNT(*) FROM user_events WHERE reg_ts IS NOT NULL
+    UNION ALL SELECT 'enter_main', COUNT(*) FROM user_events WHERE first_page_after_reg_ts IS NOT NULL
+    UNION ALL SELECT 'click_google', COUNT(*) FROM user_events WHERE click_google_ts IS NOT NULL
+    UNION ALL SELECT 'click_apple', COUNT(*) FROM user_events WHERE click_apple_ts IS NOT NULL
+    UNION ALL SELECT 'click_email', COUNT(*) FROM user_events WHERE click_email_ts IS NOT NULL
+    UNION ALL SELECT 'click_phone', COUNT(*) FROM user_events WHERE click_phone_ts IS NOT NULL
     UNION ALL SELECT 'reg_google', COUNT(*) FROM user_events WHERE reg_google_ts IS NOT NULL
     UNION ALL SELECT 'reg_apple', COUNT(*) FROM user_events WHERE reg_apple_ts IS NOT NULL
     UNION ALL SELECT 'reg_email', COUNT(*) FROM user_events WHERE reg_email_ts IS NOT NULL
     UNION ALL SELECT 'reg_phone', COUNT(*) FROM user_events WHERE reg_phone_ts IS NOT NULL
-    UNION ALL SELECT 'onboarding_complete', COUNT(*) FROM user_events WHERE onb_complete_ts IS NOT NULL
-    UNION ALL SELECT 'enter_main', COUNT(*) FROM user_events WHERE first_page_after_reg_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_watch_video', COUNT(*) FROM user_events WHERE watch_video_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_add_friend', COUNT(*) FROM user_events WHERE add_friend_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_profile_view', COUNT(*) FROM user_events WHERE profile_view_ts IS NOT NULL
+    UNION ALL SELECT 'debug_has_shooting', COUNT(*) FROM user_events WHERE shooting_ts IS NOT NULL
+    UNION ALL SELECT CONCAT('country_', country, '_google'), COUNT(*) FROM user_events WHERE reg_google_ts IS NOT NULL AND TRIM(COALESCE(country,'')) != '' AND country IN ${CORE_COUNTRIES} GROUP BY country
+    UNION ALL SELECT CONCAT('country_', country, '_apple'), COUNT(*) FROM user_events WHERE reg_apple_ts IS NOT NULL AND TRIM(COALESCE(country,'')) != '' AND country IN ${CORE_COUNTRIES} GROUP BY country
+    UNION ALL SELECT CONCAT('country_', country, '_email'), COUNT(*) FROM user_events WHERE reg_email_ts IS NOT NULL AND TRIM(COALESCE(country,'')) != '' AND country IN ${CORE_COUNTRIES} GROUP BY country
+    UNION ALL SELECT CONCAT('country_', country, '_phone'), COUNT(*) FROM user_events WHERE reg_phone_ts IS NOT NULL AND TRIM(COALESCE(country,'')) != '' AND country IN ${CORE_COUNTRIES} GROUP BY country
     ORDER BY CASE step
-      WHEN 'app_open' THEN 1 WHEN 'registered' THEN 2
-      WHEN 'reg_google' THEN 3 WHEN 'reg_apple' THEN 4
-      WHEN 'reg_email' THEN 5 WHEN 'reg_phone' THEN 6
-      WHEN 'onboarding_complete' THEN 7 WHEN 'enter_main' THEN 8 ELSE 9 END
+      WHEN 'app_open' THEN 1 WHEN 'app_open_no_action' THEN 2 WHEN 'auth_entry_click' THEN 3
+      WHEN 'debug_has_auth_entry_click' THEN 4 WHEN 'debug_has_auth_nickname_next' THEN 5 WHEN 'debug_has_auth_submit_result' THEN 6
+      WHEN 'debug_has_auth_oauth_or_switch' THEN 7 WHEN 'debug_has_legacy_success' THEN 8 WHEN 'debug_has_reg' THEN 9
+      WHEN 'click_signup' THEN 10 WHEN 'registered' THEN 11 WHEN 'enter_main' THEN 12
+      WHEN 'click_google' THEN 13 WHEN 'click_apple' THEN 14 WHEN 'click_email' THEN 15 WHEN 'click_phone' THEN 16
+      WHEN 'reg_google' THEN 17 WHEN 'reg_apple' THEN 18 WHEN 'reg_email' THEN 19 WHEN 'reg_phone' THEN 20
+      ELSE 21 END
   `;
 }
 
@@ -666,6 +818,46 @@ export function getRetentionQuery(days: number = 30) {
       retained.day_num,
       retained.cnt as retained_users,
       ROUND(100.0 * retained.cnt / NULLIF((SELECT n FROM total_signups), 0), 1) as rate
+    FROM retained
+    ORDER BY retained.day_num
+  `;
+}
+
+// Retention: D1/D3/D7/D14 by unlock cohort (users who unlocked at least once; D0 = first unlock date)
+export function getRetentionQueryUnlockCohort(days: number = 30) {
+  const lookback = days + 14;
+  return `
+    WITH unlock_cohort AS (
+      SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) as cohort_dt
+      FROM \`${dataset()}.${table()}\`
+      WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY))
+        AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY)
+        AND event_name IN ('video_unlock_success','dollarsup_first_unlock_success','video_click_unlock')
+      GROUP BY 1
+      HAVING cohort_dt >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
+    ),
+    activity AS (
+      SELECT u.user_pseudo_id, u.cohort_dt, b.event_date,
+        DATE_DIFF(PARSE_DATE('%Y%m%d', b.event_date), u.cohort_dt, DAY) as day_num
+      FROM unlock_cohort u
+      JOIN \`${dataset()}.${table()}\` b
+        ON u.user_pseudo_id = b.user_pseudo_id
+        AND PARSE_DATE('%Y%m%d', b.event_date) > u.cohort_dt
+        AND PARSE_DATE('%Y%m%d', b.event_date) <= DATE_ADD(u.cohort_dt, INTERVAL 14 DAY)
+      WHERE _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY))
+        AND PARSE_DATE('%Y%m%d', b.event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY)
+      GROUP BY 1, 2, 3, 4
+    ),
+    retained AS (
+      SELECT day_num, COUNT(DISTINCT user_pseudo_id) as cnt
+      FROM activity WHERE day_num IN (1, 3, 7, 14)
+      GROUP BY 1
+    ),
+    total_cohort AS (SELECT COUNT(*) as n FROM unlock_cohort)
+    SELECT
+      retained.day_num,
+      retained.cnt as retained_users,
+      ROUND(100.0 * retained.cnt / NULLIF((SELECT n FROM total_cohort), 0), 1) as rate
     FROM retained
     ORDER BY retained.day_num
   `;

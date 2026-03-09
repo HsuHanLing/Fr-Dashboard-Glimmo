@@ -6,6 +6,7 @@ import { useState } from "react";
 type Row = {
   date: string;
   new_users: number;
+  registration: number;
   dau: number;
   d1: string;
   d1_detail?: string | null;
@@ -36,6 +37,7 @@ function formatDate(d: string) {
 
 const HEADER_METRIC_KEYS: Record<string, string> = {
   NEW: "NEW",
+  REGISTRATION: "DAILY_REGISTRATION",
   DAU: "DAU",
   D1: "D1_RETENTION",
   "UNLOCK USERS": "UNLOCK_USERS",
@@ -110,6 +112,7 @@ export function DailyTrendTable({ data }: { data: Row[] }) {
           <tr className="border-b border-[var(--border)] bg-[var(--background)]">
             <th className="px-3 py-2 text-left font-semibold text-[var(--secondary-text)]">DATE</th>
             <ThWithTooltip label="NEW" />
+            <ThWithTooltip label="REGISTRATION" />
             <ThWithTooltip label="DAU" />
             <ThWithTooltip label="D1" />
             <ThWithTooltip label="UNLOCK USERS" />
@@ -127,6 +130,7 @@ export function DailyTrendTable({ data }: { data: Row[] }) {
             >
               <td className="px-3 py-2 font-medium text-[var(--foreground)]">{formatDate(row.date)}</td>
               <CellWithTooltip value={formatNum(row.new_users)} metricKey="NEW" />
+              <CellWithTooltip value={formatNum(row.registration)} metricKey="DAILY_REGISTRATION" />
               <CellWithTooltip value={formatNum(row.dau)} metricKey="DAU" />
               <td className="px-3 py-2 text-right text-[11px] text-[var(--foreground)]">
                 <span>{row.d1}</span>
