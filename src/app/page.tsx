@@ -283,6 +283,12 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
+            <a
+              href="/standup"
+              className="rounded-full px-3 py-1.5 text-sm font-medium text-[var(--secondary-text)] hover:text-[var(--foreground)]"
+            >
+              Standup
+            </a>
             {authEnabled && (
             <button
               onClick={async () => {

@@ -185,6 +185,7 @@ function InfoTooltip({ metricKey }: { metricKey: string }) {
 }
 
 export function FlywheelSection({ nodes, overallScore, summary, days, t }: Props) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   if (!nodes.length) {
@@ -202,8 +203,8 @@ export function FlywheelSection({ nodes, overallScore, summary, days, t }: Props
 
   return (
     <section className="mb-8 space-y-6">
-      {/* Main funnel card */}
-      <div className="overflow-visible rounded-xl bg-[var(--card-bg)] p-4 sm:p-5" style={cardStyle}>
+      {/* Main funnel card - entire Flywheel area has light gray background */}
+      <div className="overflow-visible rounded-xl bg-neutral-100/50 p-4 sm:p-5 dark:bg-neutral-900/20" style={cardStyle}>
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold tracking-tight">{t("fwTitle")}</h2>
@@ -293,45 +294,62 @@ export function FlywheelSection({ nodes, overallScore, summary, days, t }: Props
               ))}
           </div>
         )}
-      </div>
 
-      {/* Per-node detail cards */}
-      {nodes.map((node) => {
-        const formulaMap = METRIC_FORMULA_MAP[node.id] || {};
-        return (
-          <div
-            key={node.id}
-            className="overflow-visible rounded-xl bg-[var(--card-bg)]"
-            style={{ ...cardStyle, borderLeftWidth: 3, borderLeftColor: STATUS_DOT[node.status] }}
+        {/* Collapsible node details */}
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            className="flex w-full items-center justify-between py-2 text-left text-[12px] font-medium text-[var(--secondary-text)] hover:text-[var(--foreground)]"
           >
-            <button
-              type="button"
-              onClick={() => toggle(node.id)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--background)]/50"
+            {t("fwNodeDetails") || "Node Details"}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              className={`h-4 w-4 shrink-0 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
             >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-[12px] font-semibold">{getNodeLabel(node.id, t)}</span>
-                {node.conversion !== null && (
-                  <span className="text-[11px] text-[var(--secondary-text)]">
-                    {t("fwConversion")}: {formatConversionWithFraction(node.conversion, node.conversion_num, node.conversion_denom)}
-                  </span>
-                )}
-                <span className="text-[10px] text-[var(--secondary-text)]">
-                  {node.score}/10 · {getStatusLabel(node.status, t)}
-                </span>
-              </div>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className={`h-4 w-4 shrink-0 text-[var(--secondary-text)] transition-transform ${expanded[node.id] ? "rotate-180" : ""}`}
-              >
-                <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 011.06 0L8 8.94l2.72-2.72a.75.75 0 111.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 7.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-              </svg>
-            </button>
-            {expanded[node.id] && (
-              <div className="overflow-visible border-t border-[var(--border)] bg-[var(--background)]/30 px-4 py-3">
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
+              <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 011.06 0L8 8.94l2.72-2.72a.75.75 0 111.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 7.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+            </svg>
+          </button>
+          {detailsOpen && (
+            <div className="mt-3 space-y-3">
+              {nodes.map((node) => {
+                const formulaMap = METRIC_FORMULA_MAP[node.id] || {};
+                return (
+                  <div
+                    key={node.id}
+                    className="overflow-visible rounded-xl bg-[var(--card-bg)]"
+                    style={{ ...cardStyle, borderLeftWidth: 3, borderLeftColor: STATUS_DOT[node.status] }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggle(node.id)}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--background)]/50"
+                    >
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-[12px] font-semibold">{getNodeLabel(node.id, t)}</span>
+                        {node.conversion !== null && (
+                          <span className="text-[11px] text-[var(--secondary-text)]">
+                            {t("fwConversion")}: {formatConversionWithFraction(node.conversion, node.conversion_num, node.conversion_denom)}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-[var(--secondary-text)]">
+                          {node.score}/10 · {getStatusLabel(node.status, t)}
+                        </span>
+                      </div>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        className={`h-4 w-4 shrink-0 text-[var(--secondary-text)] transition-transform ${expanded[node.id] ? "rotate-180" : ""}`}
+                      >
+                        <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 011.06 0L8 8.94l2.72-2.72a.75.75 0 111.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 7.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    {expanded[node.id] && (
+                      <div className="overflow-visible border-t border-[var(--border)] bg-[var(--background)]/30 px-4 py-3">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
                   {Object.entries(node.metrics)
                     .filter(([key]) => !key.endsWith("_denom"))
                     .map(([key, val]) => {
@@ -347,12 +365,16 @@ export function FlywheelSection({ nodes, overallScore, summary, days, t }: Props
                         </div>
                       );
                     })}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
