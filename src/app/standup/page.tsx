@@ -605,7 +605,7 @@ export default function StandupPage() {
                 overallScore={flywheelData.overallScore}
                 summary={flywheelData.summary}
                 days={flywheelData.days}
-                t={t}
+                t={t as (key: string) => string}
               />
             </div>
 
