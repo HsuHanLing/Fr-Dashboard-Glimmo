@@ -96,12 +96,12 @@ export function GlimmoFeatureAdoption({ data, loading, days, t }: Props) {
                         backgroundColor: FEATURE_COLORS[i % FEATURE_COLORS.length],
                       }}
                     >
-                      {step.users.toLocaleString()}
+                      {(step.users ?? 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
                 <div className="w-[100px] shrink-0 text-right">
-                  <p className="text-[13px] font-semibold tabular-nums text-[var(--foreground)]">{step.users.toLocaleString()}</p>
+                  <p className="text-[13px] font-semibold tabular-nums text-[var(--foreground)]">{(step.users ?? 0).toLocaleString()}</p>
                   <p className="text-[12px] font-medium text-[var(--accent)]">{adoptionRate}% of writers</p>
                 </div>
               </div>

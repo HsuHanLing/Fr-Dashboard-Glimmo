@@ -90,12 +90,12 @@ export function GlimmoOnboardingFunnel({ data, loading, days, t }: Props) {
                         opacity: 0.7 + (pct / 100) * 0.3,
                       }}
                     >
-                      {step.users.toLocaleString()}
+                      {(step.users ?? 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
                 <div className="w-[120px] shrink-0 text-right">
-                  <p className="text-[13px] font-semibold tabular-nums text-[var(--foreground)]">{step.users.toLocaleString()}</p>
+                  <p className="text-[13px] font-semibold tabular-nums text-[var(--foreground)]">{(step.users ?? 0).toLocaleString()}</p>
                   <p className={i === 0 ? "text-[11px] font-medium text-[var(--secondary-text)]" : "text-[12px] font-medium text-[var(--accent)]"}>
                     {i === 0 ? "First Open" : `${pctOfFirstOpen}% of First Open`}
                   </p>

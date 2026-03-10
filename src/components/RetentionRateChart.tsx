@@ -90,8 +90,8 @@ export function RetentionRateChart({ chart }: { chart: RetentionRow[] }) {
 
   return (
     <div className="overflow-visible">
-      <div className="mb-4 h-[180px] w-full overflow-visible">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="mb-4 h-[180px] min-h-[120px] w-full min-w-0 overflow-visible">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={120}>
           <AreaChart data={chart} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
             <XAxis

@@ -84,9 +84,9 @@ export function GlimmoHealthDashboard({ t }: Props) {
 
         {summary && (
           <div className="mt-3 mb-4 flex flex-wrap gap-4 text-[11px] text-[var(--secondary-text)]">
-            <span>{t("glimmoFwActiveUsers")}: <strong className="text-[var(--foreground)]">{summary.total_active.toLocaleString()}</strong></span>
-            <span>{t("glimmoFwNewUsers")}: <strong className="text-[var(--foreground)]">{summary.new_users.toLocaleString()}</strong></span>
-            <span>{t("glimmoFwWriters")}: <strong className="text-[var(--foreground)]">{summary.writers.toLocaleString()}</strong></span>
+            <span>{t("glimmoFwActiveUsers")}: <strong className="text-[var(--foreground)]">{(summary.total_active ?? 0).toLocaleString()}</strong></span>
+            <span>{t("glimmoFwNewUsers")}: <strong className="text-[var(--foreground)]">{(summary.new_users ?? 0).toLocaleString()}</strong></span>
+            <span>{t("glimmoFwWriters")}: <strong className="text-[var(--foreground)]">{(summary.writers ?? 0).toLocaleString()}</strong></span>
           </div>
         )}
 

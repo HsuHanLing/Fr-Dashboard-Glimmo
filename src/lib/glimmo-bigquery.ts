@@ -1,5 +1,6 @@
 import { BigQuery } from "@google-cloud/bigquery";
 
+// Vercel: set GLIMMO_GOOGLE_SERVICE_ACCOUNT to the full JSON of the service account key (no file path on server).
 const projectId = process.env.GLIMMO_GOOGLE_CLOUD_PROJECT;
 const dataset = process.env.GLIMMO_BIGQUERY_DATASET;
 const table = process.env.GLIMMO_BIGQUERY_TABLE;

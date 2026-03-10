@@ -31,8 +31,8 @@ export function GlimmoDailyTrendChart({ data }: { data: TrendRow[] }) {
   };
 
   return (
-    <div className="h-[260px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="h-[260px] min-h-[200px] w-full min-w-0">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
         <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
           <XAxis dataKey="date" tickFormatter={formatDate} tick={{ fontSize: 10, fill: "var(--secondary-text)" }} axisLine={false} tickLine={false} />

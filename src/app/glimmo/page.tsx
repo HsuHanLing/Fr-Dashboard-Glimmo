@@ -164,7 +164,7 @@ export default function GlimmoDashboardPage() {
 
   const tStr = t as (key: string) => string;
 
-  if (loading && !kpi) {
+  if (loading && !kpi && !error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--background)]">
         <div className="text-center">
@@ -287,52 +287,55 @@ export default function GlimmoDashboardPage() {
                 </div>
               </div>
 
+              {error && !kpi && (
+                <p className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">{error}</p>
+              )}
               {kpi && (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                   <KPICard
                     title="DAU"
-                    value={kpi.dau.toLocaleString()}
-                    change={pctChange(kpi.dau, kpi.wow_dau)}
-                    changePositive={kpi.dau >= kpi.wow_dau}
+                    value={(kpi.dau ?? 0).toLocaleString()}
+                    change={pctChange(kpi.dau ?? 0, kpi.wow_dau ?? 0)}
+                    changePositive={(kpi.dau ?? 0) >= (kpi.wow_dau ?? 0)}
                     metricKey="DAU"
                     vsLabel={t("vs7d")}
                   />
                   <KPICard
                     title={t("glimmoNewUsers")}
-                    value={kpi.new_users.toLocaleString()}
-                    change={pctChange(kpi.new_users, kpi.wow_new_users)}
-                    changePositive={kpi.new_users >= kpi.wow_new_users}
+                    value={(kpi.new_users ?? 0).toLocaleString()}
+                    change={pctChange(kpi.new_users ?? 0, kpi.wow_new_users ?? 0)}
+                    changePositive={(kpi.new_users ?? 0) >= (kpi.wow_new_users ?? 0)}
                     metricKey="GLIMMO_NEW_USERS"
                     vsLabel={t("vs7d")}
                   />
                   <KPICard
                     title={t("glimmoD1Retention")}
-                    value={`${kpi.d1_retention}%`}
+                    value={`${kpi.d1_retention ?? 0}%`}
                     change=""
                     metricKey="D1_RETENTION"
                     vsLabel={t("glimmoD1Note")}
                   />
                   <KPICard
                     title={t("glimmoEntries")}
-                    value={kpi.journal_entries.toLocaleString()}
-                    change={pctChange(kpi.journal_entries, kpi.wow_journal_entries)}
-                    changePositive={kpi.journal_entries >= kpi.wow_journal_entries}
+                    value={(kpi.journal_entries ?? 0).toLocaleString()}
+                    change={pctChange(kpi.journal_entries ?? 0, kpi.wow_journal_entries ?? 0)}
+                    changePositive={(kpi.journal_entries ?? 0) >= (kpi.wow_journal_entries ?? 0)}
                     metricKey="GLIMMO_ENTRIES"
                     vsLabel={t("vs7d")}
                   />
                   <KPICard
                     title={t("glimmoAIUsers")}
-                    value={kpi.ai_users.toLocaleString()}
-                    change={pctChange(kpi.ai_users, kpi.wow_ai_users)}
-                    changePositive={kpi.ai_users >= kpi.wow_ai_users}
+                    value={(kpi.ai_users ?? 0).toLocaleString()}
+                    change={pctChange(kpi.ai_users ?? 0, kpi.wow_ai_users ?? 0)}
+                    changePositive={(kpi.ai_users ?? 0) >= (kpi.wow_ai_users ?? 0)}
                     metricKey="GLIMMO_AI_USERS"
                     vsLabel={t("vs7d")}
                   />
                   <KPICard
                     title={t("glimmoSubViewers")}
-                    value={kpi.sub_viewers.toLocaleString()}
-                    change={pctChange(kpi.sub_viewers, kpi.wow_sub_viewers)}
-                    changePositive={kpi.sub_viewers >= kpi.wow_sub_viewers}
+                    value={(kpi.sub_viewers ?? 0).toLocaleString()}
+                    change={pctChange(kpi.sub_viewers ?? 0, kpi.wow_sub_viewers ?? 0)}
+                    changePositive={(kpi.sub_viewers ?? 0) >= (kpi.wow_sub_viewers ?? 0)}
                     metricKey="GLIMMO_SUB_VIEWERS"
                     vsLabel={t("vs7d")}
                   />

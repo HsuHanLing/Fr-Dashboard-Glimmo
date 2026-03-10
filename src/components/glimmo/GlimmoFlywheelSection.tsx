@@ -120,9 +120,10 @@ function InfoTooltip({ metricKey, placement = "below" }: { metricKey: string; pl
 const cardStyle = { border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" } as const;
 const badgeStyle = { backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" } as const;
 
-function formatVal(key: string, val: number): string {
-  if (key.includes("rate") || key === "rate" || key === "wow_change") return `${val}%`;
-  return val.toLocaleString();
+function formatVal(key: string, val: number | undefined): string {
+  const n = val ?? 0;
+  if (key.includes("rate") || key === "rate" || key === "wow_change") return `${n}%`;
+  return n.toLocaleString();
 }
 
 function getNodeLabel(id: string, locale: string): string {
