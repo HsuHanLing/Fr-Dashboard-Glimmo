@@ -966,10 +966,10 @@ export function getScratchDistributionQuery(days: number = 30) {
     scratch_per_user AS (
       SELECT user_pseudo_id,
         COUNT(*) as scratch_count,
-        COUNTIF(event_name = 'scratch_auto_start') as auto_count,
-        COUNTIF(event_name != 'scratch_auto_start') as manual_count
+        COUNTIF(event_name = 'scratch_result_view') as auto_count,
+        COUNTIF(event_name != 'scratch_result_view') as manual_count
       FROM \`${dataset()}.${table()}\`
-      WHERE ${tableFilter(days)} AND event_name in ('Scratch_ScratchCard', 'Scratch_ScratchCard_Success', 'scratch_auto_start')
+      WHERE ${tableFilter(days)} AND event_name in ('scratch_result_view')
       GROUP BY 1
     ),
     with_bucket AS (
@@ -1000,12 +1000,7 @@ export function getScratchDistributionQuery(days: number = 30) {
 // Reward distribution in period: per-user reward event count and per-user total diamonds, bucketed
 export function getRewardDistributionQuery(days: number = 30) {
   return `
-    WITH base_users AS (
-      SELECT DISTINCT user_pseudo_id
-      FROM \`${dataset()}.${table()}\`
-      WHERE ${tableFilter(days)}
-    ),
-    reward_events AS (
+    WITH reward_events AS (
       SELECT user_pseudo_id,
         (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'reward_amount') as reward_amount
       FROM \`${dataset()}.${table()}\`
@@ -1014,7 +1009,7 @@ export function getRewardDistributionQuery(days: number = 30) {
     reward_filtered AS (
       SELECT user_pseudo_id, SAFE_CAST(reward_amount AS INT64) as amt
       FROM reward_events
-      WHERE reward_amount IS NOT NULL AND SAFE_CAST(reward_amount AS INT64) BETWEEN 0 AND 20000
+      WHERE reward_amount IS NOT NULL AND SAFE_CAST(reward_amount AS FLOAT64) BETWEEN 0 AND 20000
     ),
     per_user AS (
       SELECT user_pseudo_id,
@@ -1028,21 +1023,22 @@ export function getRewardDistributionQuery(days: number = 30) {
         COALESCE(r.reward_count, 0) as reward_count,
         COALESCE(r.total_diamonds, 0) as total_diamonds,
         CASE
-          WHEN COALESCE(r.reward_count, 0)/1000 = 0 THEN '0'
-          WHEN COALESCE(r.reward_count, 0)/1000 = 1 THEN '1'
-          WHEN COALESCE(r.reward_count, 0)/1000 = 2 THEN '2'
-          WHEN COALESCE(r.reward_count, 0)/1000 BETWEEN 3 AND 4 THEN '3-4'
-          WHEN COALESCE(r.reward_count, 0)/1000 BETWEEN 5 AND 9 THEN '5-9'
-          WHEN COALESCE(r.reward_count, 0)/1000 >= 10 THEN '10+'
+          WHEN COALESCE(b.amt, 0)/1000 = 0 THEN '0'
+          WHEN COALESCE(b.amt, 0)/500 = 1 THEN '0.5'
+          WHEN COALESCE(b.amt, 0)/1000 = 1 THEN '1'
+          WHEN COALESCE(b.amt, 0)/1000 = 2 THEN '2'
+          WHEN COALESCE(b.amt, 0)/1000 BETWEEN 3 AND 4 THEN '3-4'
+          WHEN COALESCE(b.amt, 0)/1000 BETWEEN 5 AND 9 THEN '5-9'
+          WHEN COALESCE(b.amt, 0)/1000 >= 10 THEN '10+'
         END as count_bucket,
         CASE
-          WHEN COALESCE(r.total_diamonds, 0)/1000 = 0 THEN '0'
-          WHEN COALESCE(r.total_diamonds, 0)/1000 BETWEEN 1 AND 1000 THEN '1-1k'
-          WHEN COALESCE(r.total_diamonds, 0)/1000 BETWEEN 1001 AND 5000 THEN '1k-5k'
-          WHEN COALESCE(r.total_diamonds, 0)/1000 BETWEEN 5001 AND 10000 THEN '5k-10k'
+          WHEN COALESCE(r.total_diamonds, 0) = 0 THEN '0'
+          WHEN COALESCE(r.total_diamonds, 0) BETWEEN 1 AND 1000 THEN '1-1k'
+          WHEN COALESCE(r.total_diamonds, 0) BETWEEN 1001 AND 5000 THEN '1k-5k'
+          WHEN COALESCE(r.total_diamonds, 0) BETWEEN 5001 AND 10000 THEN '5k-10k'
           ELSE '10k-20k'
         END as diamonds_bucket
-      FROM base_users b
+      FROM reward_filtered b
       LEFT JOIN per_user r ON b.user_pseudo_id = r.user_pseudo_id
     )
     SELECT
@@ -1067,7 +1063,7 @@ export function getWithdrawTotalsQuery(days: number = 30) {
   return `
     WITH withdraw_events AS (
       SELECT user_pseudo_id,
-        COALESCE(SAFE_CAST((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'withdraw_amount') AS INT64), 0) as amount_usd
+        COALESCE(SAFE_CAST((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'withdraw_amount') AS FLOAT64), 0) as amount_usd
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableFilter(days)}
         AND event_name = 'withdraw_result'
@@ -1091,7 +1087,7 @@ export function getWithdrawDistributionQuery(days: number = 30) {
   return `
     WITH withdraw_events AS (
       SELECT user_pseudo_id,
-        COALESCE(SAFE_CAST((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'withdraw_amount') AS INT64), 0) as amount_usd
+        COALESCE(SAFE_CAST((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'withdraw_amount') AS FLOAT64), 0) as amount_usd
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableFilter(days)}
         AND event_name = 'withdraw_result'
