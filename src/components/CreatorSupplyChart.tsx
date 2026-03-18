@@ -111,7 +111,7 @@ export function CreatorSupplyChart({ data }: { data: CreatorSupplyData }) {
                 fontSize: 11,
                 lineHeight: 1.4,
               }}
-              formatter={(value: number, name: string) => [fmt(value), name]}
+              formatter={(value?: number, name?: string) => [fmt(value ?? 0), name ?? ""]}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} iconSize={10} />
             <Bar dataKey="KOL" fill="#4285f4" radius={[3, 3, 0, 0]} />
