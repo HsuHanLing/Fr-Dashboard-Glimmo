@@ -80,6 +80,7 @@ type DailyRow = {
   date: string;
   new_users: number;
   registration: number;
+  pseudo_dau: number;
   dau: number;
   d1: string;
   d1_detail?: string | null;
