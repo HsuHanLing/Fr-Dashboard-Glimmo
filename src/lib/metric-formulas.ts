@@ -3,9 +3,13 @@
  */
 
 export const METRIC_FORMULAS: Record<string, { formula: string; description: string }> = {
+  PSEUDO_DAU: {
+    formula: "COUNT(DISTINCT user_pseudo_id) per day",
+    description: "Pseudo DAU: unique device-level users (user_pseudo_id) with any activity that day. Includes anonymous users who haven't logged in.",
+  },
   DAU: {
-    formula: "COUNT(DISTINCT user_pseudo_id) per day, geo.country NOT IN ('Hong Kong','China','Singapore')",
-    description: "Daily Active Users: unique users with activity that day, excluding HK/CN/SG.",
+    formula: "COUNT(DISTINCT user_id) per day",
+    description: "Daily Active Users: unique logged-in users (user_id) with activity that day.",
   },
   D1_RETENTION: {
     formula: "(Users who returned on D1 / Registered users on D0) × 100%",
@@ -20,12 +24,12 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Average Revenue Per Paying User.",
   },
   REVENUE: {
-    formula: "SUM(event_value_in_usd) where event_name IN ('purchase','in_app_purchase')",
-    description: "Total revenue from in-app purchases.",
+    formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','iap_success')",
+    description: "Total revenue from in-app purchases, including GA4 auto-tracked (purchase, in_app_purchase) and custom IAP success events (iap_success).",
   },
   WITHDRAWAL: {
-    formula: "SUM(withdrawal events) or configurable % of revenue",
-    description: "Total withdrawal amount (user payouts).",
+    formula: "SUM(SAFE_CAST(withdraw_amount AS FLOAT64)) WHERE event_name = 'withdraw_result'",
+    description: "Total withdrawal amount from withdraw_result events. Amount extracted from event_params.withdraw_amount, cast to FLOAT64.",
   },
   ROI: {
     formula: "Revenue / Cost (or Revenue / Spend)",
@@ -40,12 +44,12 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Daily completed registrations: Google/Apple/Email/Phone success events or auth_oauth_result with result=success. Excludes Hong Kong, China, Singapore. Affected by Overview geo filter when applied.",
   },
   UNLOCK_USERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('video_unlock_success','dollarsup_first_unlock_success','video_click_unlock')",
-    description: "Users who triggered at least one unlock: video_unlock_success (successful $UP unlock), dollarsup_first_unlock_success (first-time newbie unlock), or video_click_unlock (click to unlock).",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('video_unlock_success','dollarsup_first_unlock_success')",
+    description: "Users who triggered at least one unlock: video_unlock_success (successful $UP unlock) or dollarsup_first_unlock_success (first-time newbie unlock).",
   },
   UNLOCK_GE2: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE unlock_count >= 2, events: video_unlock_success, dollarsup_first_unlock_success, video_click_unlock",
-    description: "Loop users: 2+ unlock actions. Indicates the unlock loop has formed.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE unlock_count >= 2, events: video_unlock_success",
+    description: "Loop users: 2+ video_unlock_success actions. Indicates the unlock loop has formed.",
   },
   PAYERS: {
     formula: "COUNT(DISTINCT user_pseudo_id) with purchase event",
@@ -67,24 +71,24 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Users who opened the app for the first time (app install).",
   },
   FUNNEL_REGISTRATION: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('Success_GoogleRegister', 'Success_AppleRegister', 'Register_*_Success', 'Login_*_Success', 'signin_credit_earned', 'auth_submit_result', 'auth_oauth_result')",
-    description: "Users who completed registration. Includes legacy events (Success_GoogleRegister, Register_Email_Success, etc.) and new unified events (auth_submit_result with flow_type=signup/result=success, auth_oauth_result with result=success).",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('Success_GoogleRegister', 'Success_AppleRegister', 'Register_Email_Success', 'Register_Number_Success', 'auth_oauth_result')",
+    description: "Users who completed registration. Includes legacy events (Success_GoogleRegister, Success_AppleRegister, Register_Email_Success, Register_Number_Success) and auth_oauth_result (OAuth success).",
   },
   FUNNEL_FIRST_UNLOCK: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('dollarsup_first_unlock_success', 'video_unlock_success')",
-    description: "Users who completed their first $UP unlock during onboarding. dollarsup_first_unlock_success = newbie's first unlock (onboarding step 3). video_unlock_success = any successful $UP unlock.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'dollarsup_first_unlock_success'",
+    description: "Users who completed their first $UP unlock during onboarding. dollarsup_first_unlock_success fires on the newbie's very first unlock (onboarding step 3).",
   },
   FUNNEL_SCRATCH_ACTIVATED: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('onb_scratchcard_grant', 'scratch_reward_grant_result') OR (event_name = 'scratch_guide_complete' AND result = 'success')",
-    description: "Users who completed the scratch card activation. After first unlock, user receives a scratch card, scratches it, gets diamond reward (500 diamonds). This completes the core newbie loop: unlock → scratch → reward.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'onb_scratchcard_grant' OR (event_name = 'scratch_guide_complete' AND result = 'success')",
+    description: "Users who completed the scratch card activation. onb_scratchcard_grant = scratch card granted after first unlock; scratch_guide_complete with result=success = completed the scratch guide. Completes the core newbie loop: unlock → scratch → reward.",
   },
   FUNNEL_FIRST_SUP: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'Click_Sup' AND feed_area NOT LIKE '%$UP%'",
-    description: "Users who clicked on their first SUP (free short video content). Indicates content engagement after activation.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('PostedSup_Success', 'Click_PostedSup') AND feed_area NOT LIKE '%$UP%'",
+    description: "Users who interacted with their first SUP (free short video content). PostedSup_Success = posted free content; Click_PostedSup = clicked on free content. Indicates content engagement after activation.",
   },
   FUNNEL_FIRST_UP: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'Click_Sup' AND feed_area LIKE '%$UP%'",
-    description: "Users who clicked on their first $UP (premium paid content). Indicates interest in paid content = pre-payment intent.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'Click_SendtoDollarSup'",
+    description: "Users who clicked to send content to $UP (premium paid content). Indicates interest in monetizing content = pre-payment intent.",
   },
   FUNNEL_FIRST_PAY: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('purchase', 'in_app_purchase', 'iap_success', 'app_store_subscription_convert', 'app_store_subscription_renew')",
@@ -125,42 +129,42 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   },
   // Economy Health
   ECON_AVG_UNLOCKS: {
-    formula: "COUNT(unlock events) / COUNT(DISTINCT users with unlock) / days",
-    description: "Average unlock actions per active unlock user per day.",
+    formula: "COUNT(video_unlock_success events) / COUNT(DISTINCT users with video_unlock_success) / days",
+    description: "Average video_unlock_success actions per active unlock user per day.",
   },
   ECON_SCRATCH_RATE: {
-    formula: "COUNT(DISTINCT scratch users) / COUNT(DISTINCT DAU) × 100%",
-    description: "Scratch card open rate: % of DAU who opened at least one scratch card.",
+    formula: "COUNT(DISTINCT scratch users WHERE event_name = 'scratch_result_view') / COUNT(DISTINCT DAU) × 100%",
+    description: "Scratch card rate: % of DAU who triggered at least one scratch_result_view event.",
   },
   ECON_UPGRADE_RATE: {
-    formula: "COUNT(DISTINCT upgrade users) / COUNT(DISTINCT DAU) × 100%",
-    description: "Upgrade card usage rate: % of DAU who used an upgrade card.",
+    formula: "COUNT(DISTINCT user_pseudo_id WHERE event_name = 'scratch_upgrade_result' AND upgrade_status = 'insufficient_balance') / COUNT(DISTINCT DAU) × 100%",
+    description: "Upgrade attempt rate: % of DAU who triggered scratch_upgrade_result with upgrade_status=insufficient_balance (attempted upgrade but lacked balance).",
   },
   ECON_AVG_REWARD: {
-    formula: "SUM(reward_amount) / COUNT(reward events) for events with reward_amount in [0, 20000]",
-    description: "Average diamond reward per reward event. Includes scratch and unlock auto-reward (0–20k diamonds).",
+    formula: "SUM(reward_amount) / COUNT(reward events) WHERE event_name = 'scratch_result_view' AND reward_amount IN [0, 20000]",
+    description: "Average diamond reward per scratch_result_view event. reward_amount extracted from event_params, filtered to 0–20k range.",
   },
   // Content & Feed
   FEED_IMPRESSIONS: {
-    formula: "COUNT(screen_view OR All_PageBehavior) per feed area",
-    description: "Total impressions (page views) for this feed area.",
+    formula: "COUNTIF(event_name = 'video_exposure') per feed_area",
+    description: "Total video impressions (video_exposure events) grouped by feed_area from event_params.",
   },
   FEED_CTR: {
-    formula: "(Clicks / Impressions) × 100%",
-    description: "Click-through rate: % of impressions that resulted in a click.",
+    formula: "(video_click_play + video_click_unlock) / video_exposure × 100%",
+    description: "Click-through rate: % of video impressions that resulted in a play or unlock click.",
   },
   FEED_COMPLETION: {
-    formula: "(Video completes / Video starts) × 100%",
-    description: "Video completion rate: % of started videos that were watched to the end.",
+    formula: "(video_play_end with is_completed=true / video_enter_fullscreen) × 100%",
+    description: "Video completion rate: % of fullscreen video starts (video_enter_fullscreen) that were watched to completion (video_play_end with is_completed=true).",
   },
   FEED_REPLAY: {
-    formula: "(Replay events / Video completes) × 100%",
-    description: "Replay rate: % of completed videos that were replayed.",
+    formula: "(more_up_continue / video_play_end with is_completed) × 100%",
+    description: "Replay rate: % of completed videos that triggered a more_up_continue event (replay or continue watching).",
   },
   // Paid Users
   PAID_TOTAL_PAYERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('purchase','in_app_purchase')",
-    description: "Total unique users who made at least one purchase in the period.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('purchase','in_app_purchase','iap_success')",
+    description: "Total unique users who made at least one purchase in the period. Includes GA4 auto-tracked and iap_success events.",
   },
   PAID_D7_RETENTION: {
     formula: "(Payers active on D+7 / Total first-time payers in cohort) × 100%",
@@ -179,8 +183,8 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Median number of days from signup to first purchase.",
   },
   PAID_REVENUE_TOTAL: {
-    formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase')",
-    description: "Total revenue from all purchases in the selected period.",
+    formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','iap_success')",
+    description: "Total revenue from all purchases in the selected period, including GA4 auto-tracked and iap_success events.",
   },
   // Subscription / VIP
   SUB_TOTAL: {
@@ -241,15 +245,15 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Average daily new users.",
   },
   FW_REGISTERED: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('Success_GoogleRegister', 'Success_AppleRegister', 'Register_*_Success', 'Login_*_Success', 'signin_credit_earned', 'auth_submit_result', 'auth_oauth_result')",
-    description: "Users from the first_open cohort who completed registration. Includes legacy auth events and new unified auth_submit_result (flow_type=signup, result=success) and auth_oauth_result (provider=apple/google, result=success).",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('Success_GoogleRegister', 'Success_AppleRegister', 'Register_Email_Success', 'Register_Number_Success') OR (event_name = 'auth_oauth_result' AND result = 'success')",
+    description: "Users from the first_open cohort who completed registration. Includes legacy events (Success_GoogleRegister, Success_AppleRegister, Register_Email/Number_Success) and auth_oauth_result with result=success.",
   },
   FW_REG_RATE: {
     formula: "(Registered users / First open users) × 100%",
     description: "Registration conversion: % of new users who registered.",
   },
   FW_FIRST_UNLOCK: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('video_unlock_success', 'dollarsup_first_unlock_success')",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'dollarsup_first_unlock_success'",
     description: "Users from first_open cohort who performed their first content unlock. dollarsup_first_unlock_success fires on the newbie's very first $UP unlock.",
   },
   FW_UNLOCK_RATE: {
@@ -257,12 +261,12 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "First unlock conversion: % of registered users who unlocked content.",
   },
   FW_TOTAL_UNLOCKERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('video_unlock_success', 'dollarsup_first_unlock_success', 'video_click_unlock')",
-    description: "All users who triggered at least one unlock event in the period.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'video_unlock_success'",
+    description: "All users who triggered at least one video_unlock_success event in the period.",
   },
   FW_LOOP_USERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) with >=2 events from (video_unlock_success, dollarsup_first_unlock_success, video_click_unlock)",
-    description: "Users who unlocked 2+ times, indicating the unlock loop has formed.",
+    formula: "COUNT(DISTINCT user_pseudo_id) with >=2 video_unlock_success events",
+    description: "Users who unlocked 2+ times via video_unlock_success, indicating the unlock loop has formed.",
   },
   FW_POWER_USERS: {
     formula: "COUNT(DISTINCT user_pseudo_id) with >=10 unlock events",
@@ -277,20 +281,20 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Loop rate: % of unlockers who came back for 2+ unlocks. Target: 85%+.",
   },
   FW_SCRATCH_USERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name LIKE '%scratch%' (covers scratch_entry_click, scratch_complete, scratch_auto_start, scratch_share_click, etc.)",
-    description: "Users who interacted with scratch cards. Includes scratch_entry_click, scratch_complete, scratch_auto_start, scratch_reward_grant_result, scratch_share_click.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'scratch_reward_grant_result'",
+    description: "Users who triggered a scratch reward grant (scratch_reward_grant_result). Indicates users who completed a scratch action that granted a reward.",
   },
   FW_REWARD_USERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE any event has reward_amount in [0, 20000] diamonds",
-    description: "Users who triggered a reward (0–20k diamonds). Includes manual scratch and auto-reward on $UP unlock; no scratch required.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_params.diamonds_amount IN [0, 20000]",
+    description: "Users who received a diamond reward (0–20k). Uses diamonds_amount from event_params. Includes scratch and unlock auto-rewards.",
   },
   FW_TOTAL_DIAMONDS: {
-    formula: "SUM(reward_amount) for events with reward_amount in [0, 20000]",
-    description: "Total diamonds distributed. Any event with event_params.reward_amount 0–20k (scratch + unlock auto-reward).",
+    formula: "SUM(SAFE_CAST(diamonds_amount AS INT64)) WHERE diamonds_amount IN [0, 20000]",
+    description: "Total diamonds distributed via event_params.diamonds_amount, filtered to 0–20k range. Covers scratch + unlock auto-reward.",
   },
   FW_AVG_REWARD: {
     formula: "Total diamonds / Reward users",
-    description: "Average diamond reward per rewarded user (includes unlock auto-reward).",
+    description: "Average diamond reward per rewarded user based on diamonds_amount.",
   },
   FW_SCRATCH_RATE: {
     formula: "(Scratch users / Active users) × 100%",
@@ -309,45 +313,49 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "% of share attempts that completed successfully.",
   },
   FW_CASHOUT_USERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('Click_CashWalletConfirmConvert', 'auto_convert_trigger')",
-    description: "Users who converted diamonds/cash to VIP or withdrew. Click_CashWalletConfirmConvert = manual convert, auto_convert_trigger = system auto-convert after newbie scratch reward.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'withdraw_click'",
+    description: "Users who clicked to withdraw (withdraw_click). Measures users who initiated a cashout/withdrawal flow.",
+  },
+  FW_CASHOUT_SUCCESS: {
+    formula: "COUNT(*) WHERE event_name = 'withdraw_result' AND result_status = 'success'",
+    description: "Number of successful withdrawal completions from withdraw_result events.",
   },
   FW_CASHOUT_RATE: {
     formula: "(Cashout users / Scratch users) × 100%",
-    description: "% of scratch users who attempted to cash out.",
+    description: "% of scratch users who attempted to cash out via withdraw_click.",
   },
   // Growth: Scratch / Reward / Withdraw behavior (distribution & totals)
   GROWTH_SCRATCH_DIST: {
-    formula: "Per user: COUNT(events) WHERE event_name LIKE '%scratch%' in period. Buckets: 0, 1, 2, 3, 4, 5-9, 10+. Includes scratch_auto_start (auto) and all other scratch_* (manual).",
-    description: "Scratch count distribution: how many times each user triggered a scratch (auto or manual) in the selected period. Denominator = all active users in period.",
+    formula: "Per user: COUNT(events) WHERE event_name = 'scratch_result_view'. Buckets: 0, 1, 2, 3, 4, 5-9, 10+.",
+    description: "Scratch count distribution: how many scratch_result_view events each user triggered in the selected period.",
   },
   GROWTH_REWARD_COUNT_DIST: {
-    formula: "Per user: COUNT(events) WHERE event_params.reward_amount IN [0, 20000] in period. Buckets: 0, 1, 2, 3-4, 5-9, 10+.",
-    description: "Reward trigger count per user (any event with reward_amount 0–20k diamonds). Includes scratch rewards and unlock auto-reward.",
+    formula: "Per user: reward_amount / 1000 from scratch_result_view events WHERE reward_amount IN [0, 20000]. Buckets: 0, 0.5, 1, 2, 3-4, 5-9, 10+.",
+    description: "Reward amount distribution per user. Amount from event_params.reward_amount on scratch_result_view events, divided by 1000 for bucketing. Cast to INT64 for counting, filtered by FLOAT64 range 0–20k.",
   },
   GROWTH_REWARD_DIAMONDS_DIST: {
-    formula: "Per user: SUM(SAFE_CAST(reward_amount AS INT64)) for events with reward_amount in [0, 20000]. Buckets: 0, 1-1k, 1k-5k, 5k-10k, 10k-20k diamonds.",
-    description: "Total diamonds received per user in period (from events with event_params.reward_amount 0–20k).",
+    formula: "Per user: SUM(reward_amount) from scratch_result_view events WHERE reward_amount IN [0, 20000]. Buckets: 0, 1-1k, 1k-5k, 5k-10k, 10k-20k diamonds.",
+    description: "Total diamonds received per user from scratch_result_view events with event_params.reward_amount in 0–20k range.",
   },
   GROWTH_WITHDRAW_USERS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE (event_name LIKE '%withdraw%' OR event_name LIKE '%payout%') AND event_value_in_usd > 0",
-    description: "Users who had at least one withdraw/payout event with positive amount in the period.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'withdraw_result'",
+    description: "Users who had at least one withdraw_result event in the period.",
   },
   GROWTH_WITHDRAW_EVENTS: {
-    formula: "COUNT(*) WHERE (event_name LIKE '%withdraw%' OR event_name LIKE '%payout%') AND event_value_in_usd > 0",
-    description: "Total number of withdraw/payout events (with positive event_value_in_usd) in the period.",
+    formula: "COUNT(*) WHERE event_name = 'withdraw_result'",
+    description: "Total number of withdraw_result events in the period.",
   },
   GROWTH_WITHDRAW_AMOUNT: {
-    formula: "SUM(event_value_in_usd) WHERE (event_name LIKE '%withdraw%' OR event_name LIKE '%payout%')",
-    description: "Total withdrawal amount (USD) from event_value_in_usd on withdraw/payout events.",
+    formula: "SUM(SAFE_CAST(withdraw_amount AS FLOAT64)) WHERE event_name = 'withdraw_result'",
+    description: "Total withdrawal amount from withdraw_result events. withdraw_amount extracted from event_params and cast to FLOAT64.",
   },
   GROWTH_WITHDRAW_AMOUNT_DIST: {
-    formula: "Per user: SUM(event_value_in_usd) for withdraw/payout events. Buckets: 1-10, 10-50, 50-100, 100+ USD.",
-    description: "Distribution of total withdrawal amount per user (USD) in the period.",
+    formula: "Per user: SUM(SAFE_CAST(withdraw_amount AS FLOAT64)) from withdraw_result events. Buckets: 1-10, 10-50, 50-100, 100+.",
+    description: "Distribution of total withdrawal amount per user from withdraw_result events in the period.",
   },
   FW_INVITE_CLICKS: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'Click_InviteButton'",
-    description: "Users who tapped the Invite button.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('Click_InviteButton','Click_ShareInviteLink','Click_InviteViaText','Click_InviteSnapchat','scratch_share_click','Click_ShareCard','Click_SelectedInviteFriends','Click_FindFriendInviteInviteButton')",
+    description: "Users who triggered any invite/share action. Includes all invite button clicks, share links, text invites, Snapchat invites, scratch share, card share, and friend invite buttons.",
   },
   FW_INVITE_SENT: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'InviteFriendViaText_Success'",
