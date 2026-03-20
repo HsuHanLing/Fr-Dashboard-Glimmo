@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { METRIC_FORMULAS } from "@/lib/metric-formulas";
 import {
   BarChart,
@@ -19,6 +19,19 @@ import {
 type D7Ret = { total_first_payers: number; d7_retained: number; rate: number };
 type DistBucket = { bucket: string; user_count: number; pct: number };
 type GeoRow = { country: string; country_name: string; payers: number; payer_share: number; revenue: number; revenue_share: number };
+
+type RepurchaseData = {
+  total_purchase_users: number;
+  repurchasers: number;
+  repurchase_rate_pct: number;
+  avg_days_to_repurchase: number;
+  repurchase_rate_7d_pct: number;
+  repurchase_rate_30d_pct: number;
+  eligible_first_for_7d: number;
+  eligible_first_for_30d: number;
+  daily: { date: string; first_purchase_users: number; second_purchase_users: number }[];
+  platform_breakdown: { platform: string; total_users: number; repurchasers: number; repurchase_rate_pct: number }[];
+};
 
 type PaidData = {
   total_payers: number;
@@ -74,6 +87,23 @@ const cardStyle = { border: "1px solid var(--card-stroke)", boxShadow: "var(--ca
 const subCardStyle = { backgroundColor: "var(--background)" } as const;
 
 export function PaidUsersSection({ data, geo, analyticsDays, t }: Props) {
+  const [repurchase, setRepurchase] = useState<RepurchaseData | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setRepurchase(null);
+    fetch(`/api/marketing/repurchase?days=${analyticsDays}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d && typeof d.total_purchase_users === "number") setRepurchase(d as RepurchaseData);
+      })
+      .catch(() => {
+        if (!cancelled) setRepurchase(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [analyticsDays]);
+
   const pieData = geo.slice(0, 8).map((g) => ({ name: g.country_name || g.country, value: g.payers }));
 
   return (
@@ -140,6 +170,118 @@ export function PaidUsersSection({ data, geo, analyticsDays, t }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Repurchase (lifetime) — loaded async from /api/marketing/repurchase */}
+      {data && (
+        <div className="mb-4 rounded-xl bg-[var(--card-bg)] p-4" style={cardStyle}>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-semibold text-[var(--foreground)]">{t("paidRepurchaseTitle")}</p>
+              <p className="mt-0.5 text-[10px] text-[var(--secondary-text)]">{t("paidRepurchaseDesc")}</p>
+            </div>
+            <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={badgeStyle}>
+              {t("lastNDays").replace("{n}", String(analyticsDays))} · daily
+            </span>
+          </div>
+          {!repurchase ? (
+            <p className="py-6 text-center text-[11px] text-[var(--secondary-text)]">{t("loadingText")}</p>
+          ) : (
+            <>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-lg p-2.5" style={subCardStyle}>
+              <p className="flex items-center text-[10px] font-medium text-[var(--secondary-text)]">
+                {t("paidLifetimePayers")} <InfoTooltip metricKey="PAID_REPURCHASE_LIFETIME_BASE" />
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{repurchase.total_purchase_users.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg p-2.5" style={subCardStyle}>
+              <p className="flex items-center text-[10px] font-medium text-[var(--secondary-text)]">
+                {t("paidRepurchasers")} <InfoTooltip metricKey="PAID_REPURCHASERS" />
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{repurchase.repurchasers.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg p-2.5" style={subCardStyle}>
+              <p className="flex items-center text-[10px] font-medium text-[var(--secondary-text)]">
+                {t("paidRepurchaseRate")} <InfoTooltip metricKey="PAID_REPURCHASE_RATE" />
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[#4285f4]">{repurchase.repurchase_rate_pct}%</p>
+            </div>
+            <div className="rounded-lg p-2.5" style={subCardStyle}>
+              <p className="flex items-center text-[10px] font-medium text-[var(--secondary-text)]">
+                {t("paidAvgDaysRepurchase")} <InfoTooltip metricKey="PAID_AVG_DAYS_REPURCHASE" />
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{repurchase.avg_days_to_repurchase}</p>
+            </div>
+            <div className="rounded-lg p-2.5" style={subCardStyle}>
+              <p className="flex items-center text-[10px] font-medium text-[var(--secondary-text)]">
+                {t("paidRepurchase7d")} <InfoTooltip metricKey="PAID_REPURCHASE_7D" />
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[#34a853]">{repurchase.repurchase_rate_7d_pct}%</p>
+              <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">
+                n={repurchase.eligible_first_for_7d.toLocaleString()}
+              </p>
+            </div>
+            <div className="rounded-lg p-2.5" style={subCardStyle}>
+              <p className="flex items-center text-[10px] font-medium text-[var(--secondary-text)]">
+                {t("paidRepurchase30d")} <InfoTooltip metricKey="PAID_REPURCHASE_30D" />
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[#fbbc04]">{repurchase.repurchase_rate_30d_pct}%</p>
+              <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">
+                n={repurchase.eligible_first_for_30d.toLocaleString()}
+              </p>
+            </div>
+          </div>
+          {repurchase.daily.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-2 text-[11px] font-medium text-[var(--secondary-text)]">{t("paidRepurchaseDaily")}</p>
+              <div style={{ width: "100%", height: 220 }}>
+                <ResponsiveContainer>
+                  <BarChart data={repurchase.daily} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 9, fill: "var(--secondary-text)" }} tickFormatter={(v: string) => v.slice(5)} />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--secondary-text)" }} allowDecimals={false} width={36} />
+                    <RechartsTooltip
+                      contentStyle={{ fontSize: 11, backgroundColor: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8 }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Bar dataKey="first_purchase_users" name={t("paidFirstPurchaseUsers")} fill="#8ab4f8" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="second_purchase_users" name={t("paidSecondPurchaseUsers")} fill="#4285f4" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+          {repurchase.platform_breakdown.length > 0 && (
+            <div>
+              <p className="mb-2 text-[11px] font-medium text-[var(--secondary-text)]">{t("paidRepurchasePlatform")}</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b border-[var(--border)]">
+                      <th className="px-2 py-1.5 text-left font-medium text-[var(--secondary-text)]">Platform</th>
+                      <th className="px-2 py-1.5 text-right font-medium text-[var(--secondary-text)]">{t("paidLifetimePayers")}</th>
+                      <th className="px-2 py-1.5 text-right font-medium text-[var(--secondary-text)]">{t("paidRepurchasers")}</th>
+                      <th className="px-2 py-1.5 text-right font-medium text-[var(--secondary-text)]">{t("paidRepurchaseRate")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {repurchase.platform_breakdown.map((row) => (
+                      <tr key={row.platform} className="border-b border-[var(--border)]/50">
+                        <td className="px-2 py-1.5 font-medium text-[var(--foreground)]">{row.platform}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{row.total_users.toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{row.repurchasers.toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{row.repurchase_rate_pct}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* D7 Retention + First Pay Distribution */}
       <div className="mb-4 grid gap-4 lg:grid-cols-3">

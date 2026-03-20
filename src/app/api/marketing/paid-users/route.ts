@@ -1,12 +1,25 @@
 import { NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
 import {
   getPaidUsersKPIQuery,
   getPaidUsersD7RetentionQuery,
   getPaidUsersFirstPayDistQuery,
 } from "@/lib/queries";
+import { runCachedBigQuery } from "@/lib/marketing-cache";
 
 export const dynamic = "force-dynamic";
+
+const EMPTY_REPURCHASE = {
+  total_purchase_users: 0,
+  repurchasers: 0,
+  repurchase_rate_pct: 0,
+  avg_days_to_repurchase: 0,
+  repurchase_rate_7d_pct: 0,
+  repurchase_rate_30d_pct: 0,
+  eligible_first_for_7d: 0,
+  eligible_first_for_30d: 0,
+  daily: [] as { date: string; first_purchase_users: number; second_purchase_users: number }[],
+  platform_breakdown: [] as { platform: string; total_users: number; repurchasers: number; repurchase_rate_pct: number }[],
+};
 
 const EMPTY = {
   total_payers: 0,
@@ -18,12 +31,12 @@ const EMPTY = {
   repeat_payers: 0,
   d7_retention: { total_first_payers: 0, d7_retained: 0, rate: 0 },
   first_pay_distribution: [] as { bucket: string; user_count: number; pct: number }[],
+  repurchase: EMPTY_REPURCHASE,
 };
 
-async function safeQuery(query: string) {
+async function safeQuery(query: string, cacheKey: string) {
   try {
-    const [rows] = await bigquery.query({ query });
-    return rows;
+    return await runCachedBigQuery<Record<string, unknown>>(["paid-users", cacheKey], query);
   } catch (err) {
     console.error("Paid users sub-query error:", err);
     return [];
@@ -36,9 +49,9 @@ export async function GET(request: Request) {
 
   try {
     const [kpiRows, retRows, distRows] = await Promise.all([
-      safeQuery(getPaidUsersKPIQuery(days)),
-      safeQuery(getPaidUsersD7RetentionQuery(days)),
-      safeQuery(getPaidUsersFirstPayDistQuery(days)),
+      safeQuery(getPaidUsersKPIQuery(days), `kpi-${days}`),
+      safeQuery(getPaidUsersD7RetentionQuery(days), `d7-${days}`),
+      safeQuery(getPaidUsersFirstPayDistQuery(days), `dist-${days}`),
     ]);
 
     const kpi = (kpiRows as Record<string, number>[])[0] || {};

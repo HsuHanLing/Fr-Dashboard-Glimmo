@@ -251,30 +251,58 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     formula: "MEDIAN(DATE_DIFF(first_purchase_date, signup_date, DAY))",
     description: "Median number of days from signup to first purchase.",
   },
+  PAID_REPURCHASE_LIFETIME_BASE: {
+    formula: "COUNT(DISTINCT user) WHERE ≥1 successful purchase (lifetime, export window)",
+    description:
+      "Users with at least one successful purchase in the lifetime scan. Same event and success rules as repurchase metrics.",
+  },
+  PAID_REPURCHASERS: {
+    formula: "COUNT(users) WHERE COUNT(successful purchases) ≥ 2 (lifetime)",
+    description:
+      "Unique users with at least two successful purchase events (lifetime). Events: in_app_purchase, purchase, iap_success, app_store_subscription_convert, app_store_subscription_renew. Success: event_value_in_usd > 0 OR iap_success. First/second purchase timestamps from export history (up to ~10y lookback). Excludes exchanger-only flows.",
+  },
+  PAID_REPURCHASE_RATE: {
+    formula: "Repurchasers / Users with ≥1 successful purchase (lifetime)",
+    description: "Share of all-time payers (at least one successful purchase) who made a second successful purchase.",
+  },
+  PAID_AVG_DAYS_REPURCHASE: {
+    formula: "AVG(DATE(second_purchase) - DATE(first_purchase)) for users with ≥2 purchases",
+    description: "Mean calendar days between first and second successful purchase.",
+  },
+  PAID_REPURCHASE_7D: {
+    formula: "(Users with 2nd purchase within 7d of 1st) / (Users whose first purchase was ≥7 days ago)",
+    description:
+      "Among users whose first purchase was long enough ago to observe a 7-day window, the share who had a second successful purchase within 7 days of the first.",
+  },
+  PAID_REPURCHASE_30D: {
+    formula: "(Users with 2nd purchase within 30d of 1st) / (Users whose first purchase was ≥30 days ago)",
+    description:
+      "Among users whose first purchase was long enough ago to observe a 30-day window, the share who had a second successful purchase within 30 days of the first.",
+  },
   PAID_REVENUE_TOTAL: {
     formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','iap_success')",
     description: "Total revenue from all purchases in the selected period, including GA4 auto-tracked and iap_success events.",
   },
   // Subscription / VIP
   SUB_TOTAL: {
-    formula: "Exchange + Paid (real $) + Wallet (in-app cash/diamond)",
-    description: "Total subscribers: exchange (Diamond→coin, Cash→coin; iOS only), real-money subscription, and wallet (in-app cash/diamond).",
+    formula: "Paid (real $) + Wallet (in-app cash/diamond)",
+    description: "Total subscribers: real-money subscription plus wallet (in-app cash/diamond). Excludes exchangers (Diamond/Cash→coin VIP conversion).",
   },
   SUB_EXCHANGE: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('auto_convert_trigger', 'Click_CashWalletConfirmConvert')",
     description: "Users who converted to VIP by exchanging in-app balance. Convert methods: Diamond → coin, Cash → coin (convertMethod from event_params). Auto-convert = auto_convert_trigger; manual = Click_CashWalletConfirmConvert. IMPORTANT: Conversion feature is available on iOS only; not supported on Android.",
   },
   SUB_PAID: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew') OR (iap_success AND product_id='subscription')",
-    description: "Users who paid real money to subscribe (App Store / Google Play or IAP subscription). Excludes wallet_subscribe_success (in-app cash wallet) and top-up.",
+    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('app_store_subscription_convert','app_store_subscription_renew','iap_success','in_app_purchase') OR (iap_success AND product_id='subscription')",
+    description: "Users who paid real money to subscribe (store subscription events, iap_success, in_app_purchase as applicable). Excludes wallet_subscribe_success (in-app cash wallet) and top-up.",
   },
   SUB_WALLET: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'wallet_subscribe_success'",
     description: "Users who subscribed using in-app cash or diamond balance (wallet_subscribe_success). Not real money. Does not contribute to Paid Sub Revenue.",
   },
   SUB_PAID_REVENUE: {
-    formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','app_store_subscription_convert','app_store_subscription_renew') AND (event_name IN ('app_store_subscription_convert','app_store_subscription_renew') OR product_type/item_category LIKE '%sub%' OR product_id='subscription')",
-    description: "Subscription plan revenue: purchase/in_app_purchase events classified as subscription by product_type, item_category, or product_id. Same source as Monetization Subscription stream. Excludes wallet (in-app cash) and top-up.",
+    formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','app_store_subscription_convert','app_store_subscription_renew','iap_success') AND subscription filters (product_type/item_category/product_id or store subscription events)",
+    description: "Subscription plan revenue: same filters as the Subscription Analysis BigQuery (store subscription events, iap_success, in_app_purchase when classified as subscription). Excludes wallet (in-app cash) and top-up.",
   },
   SUB_IAP_SUCCESS: {
     formula: "(Subscription paid users / Subscription IAP start users) × 100%",
@@ -444,8 +472,8 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Scratch count distribution: among users with ≥1 scratch_result_view, count of scratch events (scratch_result_view + scratch_reward_grant_result) per user in period. Both events indicate scratch activity; bucketed by total count.",
   },
   GROWTH_REWARD_COUNT_DIST: {
-    formula: "Per-event reward_amount (diamonds) from scratch_result_view + scratch_reward_grant_result. Buckets include explicit 500 (diamonds), 0, 0.5k, 1k, 2k, 3–4k, 5–9k, 10k+ by amt/1000 where applicable.",
-    description: "Reward amount per event distribution. Events: scratch_result_view, scratch_reward_grant_result. Uses reward_amount or diamonds_amount from event_params (FLOAT64, 0–20k). Includes a dedicated bucket for exactly 500 diamonds.",
+    formula: "Per-event reward_amount (diamonds) from scratch_result_view + scratch_reward_grant_result. Buckets: 0, 0.5k (500 diamonds), 1k, 2k, 3–4k, 5–9k, 10k+ by amt/1000 where applicable.",
+    description: "Reward amount per event distribution. Events: scratch_result_view, scratch_reward_grant_result. Uses reward_amount or diamonds_amount from event_params (FLOAT64, 0–20k). Includes a dedicated bucket labeled 0.5 for exactly 500 diamonds.",
   },
   GROWTH_REWARD_DIAMONDS_DIST: {
     formula: "Per user: SUM(reward_amount) from scratch_result_view + scratch_reward_grant_result WHERE reward_amount IN [0, 20000]. Buckets: 0, 1-1k, 1k-5k, 5k-10k, 10k-20k.",
