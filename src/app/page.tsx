@@ -109,6 +109,35 @@ function formatCurrency(n: number) {
   }).format(n);
 }
 
+function KpiSkeletonGrid() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8" aria-hidden>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[88px] animate-pulse rounded-xl bg-[var(--background)]"
+          style={{ border: "1px solid var(--border)" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TrendSectionSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden>
+      <div
+        className="h-[280px] animate-pulse rounded-lg bg-[var(--background)]"
+        style={{ border: "1px solid var(--border)" }}
+      />
+      <div
+        className="h-[140px] animate-pulse rounded-lg bg-[var(--background)]"
+        style={{ border: "1px solid var(--border)" }}
+      />
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { t, locale, setLocale } = useLocale();
   const [kpi, setKpi] = useState<KPI | null>(null);
@@ -121,7 +150,10 @@ export default function DashboardPage() {
   const [filterUserSegment, setFilterUserSegment] = useState("all");
   const [filterPlatform, setFilterPlatform] = useState("all");
   const [versions, setVersions] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  /** Daily trend + overview API in flight (does not block KPI row). */
+  const [trendLoading, setTrendLoading] = useState(true);
+  /** KPI row in flight — shown with skeleton on first load or after filter change. */
+  const [kpiLoading, setKpiLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userAttributes, setUserAttributes] = useState<{ age: { attr: string; users: number; share: number }[]; device: { attr: string; users: number; share: number }[] } | null>(null);
   const [geoDistribution, setGeoDistribution] = useState<{ region: string; region_name: string; users: number; share: number }[]>([]);
@@ -252,25 +284,37 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchKPI() {
-      const params = new URLSearchParams({ mode: kpiMode });
-      if (filterChannel !== "all") params.set("channel", filterChannel);
-      if (filterVersion !== "all") params.set("version", filterVersion);
-      if (filterUserSegment !== "all") params.set("userSegment", filterUserSegment);
-      if (filterPlatform !== "all") params.set("platform", filterPlatform);
-      if (filterGeo !== "all") params.set("geo", filterGeo);
-      const r = await fetch(`/api/marketing/kpi?${params}`);
-      const j = await r.json();
-      if (j.error) throw new Error(j.error);
-      setKpi(j);
+      setKpiLoading(true);
+      try {
+        const params = new URLSearchParams({ mode: kpiMode });
+        if (filterChannel !== "all") params.set("channel", filterChannel);
+        if (filterVersion !== "all") params.set("version", filterVersion);
+        if (filterUserSegment !== "all") params.set("userSegment", filterUserSegment);
+        if (filterPlatform !== "all") params.set("platform", filterPlatform);
+        if (filterGeo !== "all") params.set("geo", filterGeo);
+        const r = await fetch(`/api/marketing/kpi?${params}`);
+        const j = await r.json();
+        if (j.error) throw new Error(j.error);
+        if (!cancelled) setKpi(j);
+      } catch (e) {
+        if (!cancelled) setError(String(e));
+      } finally {
+        if (!cancelled) setKpiLoading(false);
+      }
     }
-    fetchKPI().catch((e) => setError(String(e)));
+    fetchKPI();
+    return () => {
+      cancelled = true;
+    };
   }, [kpiMode, filterChannel, filterVersion, filterUserSegment, filterPlatform, filterGeo]);
 
-  // Overview data: daily trend + overview
+  // Overview data: daily trend + overview (independent from KPI — page shell shows immediately)
   useEffect(() => {
+    let cancelled = false;
     async function fetchOverviewData() {
-      setLoading(true);
+      setTrendLoading(true);
       setError(null);
       const params = new URLSearchParams({ days: String(trendDays) });
       if (filterChannel !== "all") params.set("channel", filterChannel);
@@ -284,16 +328,47 @@ export default function DashboardPage() {
           fetch(`/api/marketing/daily-trend${qs}`).then((r) => r.json()),
           fetch(`/api/marketing/overview${qs}`).then((r) => r.json()),
         ]);
-        if (Array.isArray(dt)) setDailyTrend(dt);
-        if (o.error) throw new Error(o.error);
+        if (!cancelled && Array.isArray(dt)) setDailyTrend(dt);
+        if (!cancelled && o.error) throw new Error(o.error);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
-        setLoading(false);
+        if (!cancelled) setTrendLoading(false);
       }
     }
     fetchOverviewData();
+    return () => {
+      cancelled = true;
+    };
   }, [trendDays, filterChannel, filterVersion, filterUserSegment, filterPlatform, filterGeo]);
+
+  const overviewFiltersBusy = kpiLoading || trendLoading;
+
+  // P1: Prefetch Growth tab data while user is on Overview (idle / delayed — no global spinner)
+  useEffect(() => {
+    if (activeTab !== "overview") return;
+    const key = `growth-${analyticsDays}`;
+    if (analyticsLoadedRef.current.has(key)) return;
+
+    const runPrefetch = () => {
+      if (analyticsLoadedRef.current.has(key)) return;
+      void fetchGrowthBundle().then(() => {
+        analyticsLoadedRef.current.add(`growth-${analyticsDays}`);
+        analyticsLoadedRef.current.add(`flywheel-${analyticsDays}`);
+      });
+    };
+
+    const w = globalThis as unknown as Window;
+    let idleId: number;
+    if (typeof w.requestIdleCallback === "function") {
+      idleId = w.requestIdleCallback(runPrefetch, { timeout: 3500 });
+      return () => {
+        if (typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(idleId);
+      };
+    }
+    idleId = w.setTimeout(runPrefetch, 1800);
+    return () => w.clearTimeout(idleId);
+  }, [activeTab, analyticsDays, fetchGrowthBundle]);
 
   // Tab-scoped analytics (P0): only fetch bundles for the active tab + AI prefetch
   useEffect(() => {
@@ -372,17 +447,6 @@ export default function DashboardPage() {
     fetchEconSegment();
   }, [econSegment, analyticsDays, activeTab]);
 
-  if (loading && !kpi) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--background)]">
-        <div className="text-center">
-          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]" />
-          <p className="mt-4 text-[var(--secondary-text)]">{t("loading")}</p>
-        </div>
-      </div>
-    );
-  }
-
   const todayStr = new Date().toISOString().split("T")[0];
   const tStr = t as (key: string) => string;
 
@@ -449,7 +513,7 @@ export default function DashboardPage() {
             <select
               value={filterChannel}
               onChange={(e) => setFilterChannel(e.target.value)}
-              disabled={loading}
+              disabled={overviewFiltersBusy}
               className="min-w-[140px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ border: "1px solid var(--border)" }}
             >
@@ -465,7 +529,7 @@ export default function DashboardPage() {
             <select
               value={filterVersion}
               onChange={(e) => setFilterVersion(e.target.value)}
-              disabled={loading}
+              disabled={overviewFiltersBusy}
               className="min-w-[140px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ border: "1px solid var(--border)" }}
             >
@@ -480,7 +544,7 @@ export default function DashboardPage() {
             <select
               value={filterPlatform}
               onChange={(e) => setFilterPlatform(e.target.value)}
-              disabled={loading}
+              disabled={overviewFiltersBusy}
               className="min-w-[140px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ border: "1px solid var(--border)" }}
             >
@@ -496,7 +560,7 @@ export default function DashboardPage() {
               <select
                 value={filterUserSegment}
                 onChange={(e) => setFilterUserSegment(e.target.value)}
-                disabled={loading}
+                disabled={overviewFiltersBusy}
                 className="min-w-[180px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ border: "1px solid var(--border)" }}
               >
@@ -517,7 +581,7 @@ export default function DashboardPage() {
             <select
               value={filterGeo}
               onChange={(e) => setFilterGeo(e.target.value)}
-              disabled={loading}
+              disabled={overviewFiltersBusy}
               className="min-w-[160px] rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ border: "1px solid var(--border)" }}
             >
@@ -593,8 +657,19 @@ export default function DashboardPage() {
             {t("d1CohortNote")}
           </p>
 
+          {kpiLoading && !kpi && <KpiSkeletonGrid />}
           {kpi && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            <div className="relative">
+              {kpiLoading && (
+                <span
+                  className="absolute -right-1 -top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--card-bg)] shadow-sm"
+                  style={{ border: "1px solid var(--border)" }}
+                  aria-label={t("loading")}
+                >
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-[var(--border)] border-t-[var(--accent)]" />
+                </span>
+              )}
+              <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 ${kpiLoading ? "opacity-60" : ""}`}>
               <KPICard
                 title="Pseudo DAU"
                 value={kpi.pseudo_dau.toLocaleString()}
@@ -659,6 +734,7 @@ export default function DashboardPage() {
                 metricKey="ROI"
                 vsLabel={t("vs7d")}
               />
+              </div>
             </div>
           )}
         </section>
@@ -715,10 +791,22 @@ export default function DashboardPage() {
           </div>
 
           <div className="overflow-hidden rounded-xl bg-[var(--card-bg)]" style={{ border: "1px solid var(--card-stroke)", boxShadow: "var(--card-shadow)" }}>
-            <div className="p-4 sm:p-5">
-              <DailyTrendChart data={dailyTrend} />
-              <div className="mt-5">
-                <DailyTrendTable data={dailyTrend} />
+            <div className={`relative p-4 sm:p-5 ${trendLoading && dailyTrend.length > 0 ? "opacity-60" : ""}`}>
+              {trendLoading && dailyTrend.length === 0 && <TrendSectionSkeleton />}
+              {trendLoading && dailyTrend.length > 0 && (
+                <span
+                  className="absolute right-5 top-5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--card-bg)] shadow-sm"
+                  style={{ border: "1px solid var(--border)" }}
+                  aria-label={t("loading")}
+                >
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-[var(--border)] border-t-[var(--accent)]" />
+                </span>
+              )}
+              <div className={trendLoading && dailyTrend.length === 0 ? "hidden" : ""}>
+                <DailyTrendChart data={dailyTrend} />
+                <div className="mt-5">
+                  <DailyTrendTable data={dailyTrend} />
+                </div>
               </div>
             </div>
           </div>
