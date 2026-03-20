@@ -22,7 +22,8 @@ export async function GET(request: Request) {
     const device = r
       .filter((x) => x.type === "device")
       .map((x) => ({
-        attr: x.attr === "IOS" ? "iOS" : x.attr,
+        // Composite: "platform · device.category" from BigQuery; normalize GA4 IOS → iOS on first segment
+        attr: x.attr.replace(/^IOS\b/, "iOS"),
         users: Number(x.users),
       }));
     const totalAge = age.reduce((s, a) => s + a.users, 0);

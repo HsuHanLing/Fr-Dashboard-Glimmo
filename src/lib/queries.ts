@@ -20,6 +20,17 @@ function tableFilter(days: number) {
       AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)`;
 }
 
+/** Wide window for lifetime first/second purchase (GA4 export retention). */
+function lifetimeTableFilter(lookbackDays: number) {
+  return `_TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookbackDays} DAY))
+      AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
+      AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${lookbackDays} DAY)`;
+}
+
+/** Canonical successful purchase events (real $ + wallet IAP); excludes exchanger-only flows. */
+const PURCHASE_EVENT_NAMES = `('in_app_purchase','purchase','iap_success',
+          'app_store_subscription_convert','app_store_subscription_renew')`;
+
 function filterClause(filters: OverviewFilters | undefined, days: number): string {
   if (!filters) return "";
   const parts: string[] = [];
@@ -366,14 +377,17 @@ export function getDailyTrendQuery(days: number = 7, filters?: OverviewFilters) 
   `;
 }
 
-// User Attributes - Age & Device (user_profile, device_info)
+// User Attributes - Age & Device (platform + device.category)
 export function getUserAttributesQuery(days: number = 30) {
   return `
     WITH device_agg AS (
-      SELECT platform as device_type, COUNT(DISTINCT user_pseudo_id) as users
+      SELECT
+        platform as device_type,
+        device.category as device_category,
+        COUNT(DISTINCT user_pseudo_id) as users
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableFilter(days)}
-      GROUP BY platform
+      GROUP BY 1, 2
     ),
     age_agg AS (
       SELECT
@@ -386,7 +400,15 @@ export function getUserAttributesQuery(days: number = 30) {
       WHERE ${tableFilter(days)}
       GROUP BY 1
     )
-    SELECT 'device' as type, device_type as attr, users FROM device_agg
+    SELECT
+      'device' as type,
+      CONCAT(
+        COALESCE(device_type, 'unknown'),
+        ' · ',
+        COALESCE(device_category, '—')
+      ) as attr,
+      users
+    FROM device_agg
     UNION ALL
     SELECT 'age' as type, age_group as attr, users FROM age_agg
   `;
@@ -412,7 +434,7 @@ export function getMonetizationQuery(days: number = 30) {
     WITH classified AS (
     SELECT
         CASE
-          WHEN event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success')
+          WHEN event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success', 'in_app_purchase')
             THEN 'Subscription'
           WHEN LOWER(COALESCE(
         (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'),
@@ -426,7 +448,7 @@ export function getMonetizationQuery(days: number = 30) {
     FROM \`${dataset()}.${table()}\`
     WHERE ${tableFilter(days)}
         AND event_name IN ('purchase', 'in_app_purchase',
-          'app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success')
+          'app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success', 'in_app_purchase')
       AND event_value_in_usd > 0
     )
     SELECT revenue_stream, SUM(event_value_in_usd) as revenue
@@ -1144,9 +1166,8 @@ export function getRewardDistributionQuery(days: number = 30) {
         COALESCE(r.reward_count, 0) as reward_count,
         COALESCE(r.total_diamonds, 0) as total_diamonds,
         CASE
-          WHEN COALESCE(b.amt, 0) = 500 THEN '500'
           WHEN COALESCE(b.amt, 0)/1000 = 0 THEN '0'
-          WHEN COALESCE(b.amt, 0)/500 = 1 THEN '0.5'
+          WHEN COALESCE(b.amt, 0) = 500 THEN '0.5'
           WHEN COALESCE(b.amt, 0)/1000 = 1 THEN '1'
           WHEN COALESCE(b.amt, 0)/1000 = 2 THEN '2'
           WHEN COALESCE(b.amt, 0)/1000 BETWEEN 3 AND 4 THEN '3-4'
@@ -1363,6 +1384,130 @@ export function getPaidUsersFirstPayDistQuery(days: number = 30) {
     FROM combined
     GROUP BY 1
     ORDER BY MIN(days_to_pay)
+  `;
+}
+
+// Repurchase: lifetime first/second successful purchase; KPI + daily + platform breakdown
+// Events: PURCHASE_EVENT_NAMES. Success: revenue > 0 OR iap_success (wallet / zero-USD IAP).
+export function getRepurchaseQuery(days: number = 30) {
+  /** ~3y export window — balances lifetime semantics vs scan cost (was 10y). */
+  const life = 1095;
+  return `
+    WITH success_purchases AS (
+      SELECT
+        user_pseudo_id,
+        event_timestamp,
+        PARSE_DATE('%Y%m%d', event_date) AS dt,
+        COALESCE(NULLIF(TRIM(UPPER(platform)), ''), 'UNKNOWN') AS platform
+      FROM \`${dataset()}.${table()}\`
+      WHERE ${lifetimeTableFilter(life)}
+        AND event_name IN ${PURCHASE_EVENT_NAMES}
+        AND (
+          COALESCE(event_value_in_usd, 0) > 0
+          OR event_name = 'iap_success'
+        )
+    ),
+    first_ts AS (
+      SELECT user_pseudo_id, MIN(event_timestamp) AS first_ts
+      FROM success_purchases
+      GROUP BY 1
+    ),
+    second_ts AS (
+      SELECT s.user_pseudo_id, MIN(s.event_timestamp) AS second_ts
+      FROM success_purchases s
+      INNER JOIN first_ts f
+        ON s.user_pseudo_id = f.user_pseudo_id
+        AND s.event_timestamp > f.first_ts
+      GROUP BY 1
+    ),
+    platform_first AS (
+      SELECT user_pseudo_id, platform
+      FROM (
+        SELECT
+          user_pseudo_id,
+          platform,
+          ROW_NUMBER() OVER (PARTITION BY user_pseudo_id ORDER BY event_timestamp) AS rn
+        FROM success_purchases
+      )
+      WHERE rn = 1
+    ),
+    user_lifetime AS (
+      SELECT
+        f.user_pseudo_id,
+        DATE(f.first_ts) AS first_dt,
+        DATE(s.second_ts) AS second_dt,
+        DATE_DIFF(DATE(s.second_ts), DATE(f.first_ts), DAY) AS days_to_second,
+        COALESCE(pf.platform, 'UNKNOWN') AS platform
+      FROM first_ts f
+      LEFT JOIN second_ts s ON f.user_pseudo_id = s.user_pseudo_id
+      LEFT JOIN platform_first pf ON f.user_pseudo_id = pf.user_pseudo_id
+    ),
+    daily_spine AS (
+      SELECT d AS dt
+      FROM UNNEST(GENERATE_DATE_ARRAY(
+        DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY),
+        CURRENT_DATE()
+      )) AS d
+    ),
+    daily_agg AS (
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', d.dt) AS date,
+        (SELECT COUNT(*) FROM user_lifetime u WHERE u.first_dt = d.dt) AS first_purchase_users,
+        (SELECT COUNT(*) FROM user_lifetime u WHERE u.second_dt = d.dt) AS second_purchase_users
+      FROM daily_spine d
+    ),
+    platform_breakdown AS (
+      SELECT
+        platform,
+        COUNT(*) AS total_users,
+        COUNTIF(second_dt IS NOT NULL) AS repurchasers,
+        SAFE_DIVIDE(COUNTIF(second_dt IS NOT NULL), NULLIF(COUNT(*), 0)) AS repurchase_rate
+      FROM user_lifetime
+      GROUP BY 1
+    )
+    SELECT
+      (SELECT COUNT(*) FROM user_lifetime) AS total_purchase_users,
+      (SELECT COUNTIF(second_dt IS NOT NULL) FROM user_lifetime) AS repurchasers,
+      SAFE_DIVIDE(
+        (SELECT COUNTIF(second_dt IS NOT NULL) FROM user_lifetime),
+        NULLIF((SELECT COUNT(*) FROM user_lifetime), 0)
+      ) AS repurchase_rate,
+      (SELECT AVG(CAST(days_to_second AS FLOAT64)) FROM user_lifetime WHERE second_dt IS NOT NULL) AS avg_days_to_repurchase,
+      (SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) FROM user_lifetime) AS eligible_first_for_7d,
+      (SELECT COUNTIF(
+        first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        AND second_dt IS NOT NULL
+        AND days_to_second <= 7
+      ) FROM user_lifetime) AS repurchased_within_7d,
+      SAFE_DIVIDE(
+        (SELECT COUNTIF(
+          first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+          AND second_dt IS NOT NULL
+          AND days_to_second <= 7
+        ) FROM user_lifetime),
+        NULLIF((SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) FROM user_lifetime), 0)
+      ) AS repurchase_rate_7d,
+      (SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) FROM user_lifetime) AS eligible_first_for_30d,
+      (SELECT COUNTIF(
+        first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+        AND second_dt IS NOT NULL
+        AND days_to_second <= 30
+      ) FROM user_lifetime) AS repurchased_within_30d,
+      SAFE_DIVIDE(
+        (SELECT COUNTIF(
+          first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+          AND second_dt IS NOT NULL
+          AND days_to_second <= 30
+        ) FROM user_lifetime),
+        NULLIF((SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) FROM user_lifetime), 0)
+      ) AS repurchase_rate_30d,
+      (SELECT ARRAY_AGG(STRUCT(date, first_purchase_users, second_purchase_users) ORDER BY date) FROM daily_agg) AS daily_data,
+      (SELECT ARRAY_AGG(STRUCT(
+        platform,
+        total_users,
+        repurchasers,
+        repurchase_rate
+      ) ORDER BY total_users DESC) FROM platform_breakdown) AS platform_breakdown
   `;
 }
 
@@ -1711,7 +1856,7 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
           THEN user_pseudo_id END) as auto_convert_users,
         COUNT(DISTINCT CASE WHEN event_name = 'Click_CashWalletConfirmConvert'
           THEN user_pseudo_id END) as manual_convert_users,
-        COUNT(DISTINCT CASE WHEN event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew')
+        COUNT(DISTINCT CASE WHEN event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success', 'in_app_purchase')
           OR (event_name = 'iap_success' AND product_id = 'subscription')
           THEN user_pseudo_id END) as paid_sub_users,
         COUNT(DISTINCT CASE WHEN event_name = 'wallet_subscribe_success'
@@ -1737,7 +1882,7 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
           THEN user_pseudo_id END) as total_auto_convert,
         COUNT(DISTINCT CASE WHEN event_name = 'Click_CashWalletConfirmConvert'
           THEN user_pseudo_id END) as total_manual_convert,
-        COUNT(DISTINCT CASE WHEN event_name IN ('app_store_subscription_convert','app_store_subscription_renew')
+        COUNT(DISTINCT CASE WHEN event_name IN ('app_store_subscription_convert','app_store_subscription_renew', 'iap_success','in_app_purchase')
           OR (event_name = 'iap_success' AND product_id = 'subscription')
           THEN user_pseudo_id END) as total_paid_sub,
         COUNT(DISTINCT CASE WHEN event_name = 'wallet_subscribe_success'
@@ -1775,10 +1920,10 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
       SELECT COALESCE(SUM(event_value_in_usd), 0) as amt
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableFilter(days)}
-        AND event_name IN ('purchase', 'in_app_purchase', 'app_store_subscription_convert', 'app_store_subscription_renew')
+        AND event_name IN ('purchase', 'in_app_purchase', 'app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success')
         AND event_value_in_usd > 0
         AND (
-          event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew')
+          event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success', 'in_app_purchase')
           OR LOWER(COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_type'), '')) LIKE '%sub%'
           OR LOWER(COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'item_category'), '')) LIKE '%sub%'
           OR COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'), '') = 'subscription'

@@ -1,32 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { KPICard } from "@/components/KPICard";
-import { DailyTrendChart } from "@/components/DailyTrendChart";
-import { DailyTrendTable } from "@/components/DailyTrendTable";
-import { UserAttributesChart } from "@/components/UserAttributesChart";
-import { GeoDistributionChart } from "@/components/GeoDistributionChart";
-import { CreatorSupplyChart } from "@/components/CreatorSupplyChart";
+import {
+  DailyTrendChartLazy as DailyTrendChart,
+  DailyTrendTableLazy as DailyTrendTable,
+  UserAttributesChartLazy as UserAttributesChart,
+  GeoDistributionChartLazy as GeoDistributionChart,
+  CreatorSupplyChartLazy as CreatorSupplyChart,
+  GrowthFunnelChartLazy as GrowthFunnelChart,
+  RetentionRateChartLazy as RetentionRateChart,
+  MonetizationChartLazy as MonetizationChart,
+  EconomyHealthChartLazy as EconomyHealthChart,
+  ContentFeedChartLazy as ContentFeedChart,
+  UnlockInsightsSectionLazy as UnlockInsightsSection,
+  PaidUsersSectionLazy as PaidUsersSection,
+  SubscriptionAnalysisSectionLazy as SubscriptionAnalysisSection,
+  ScratchRewardWithdrawSectionLazy as ScratchRewardWithdrawSection,
+} from "@/components/lazy-dashboard-charts";
 import type { CreatorSupplyData } from "@/components/CreatorSupplyChart";
-import { GrowthFunnelChart } from "@/components/GrowthFunnelChart";
-import { RetentionRateChart } from "@/components/RetentionRateChart";
-import { MonetizationChart } from "@/components/MonetizationChart";
-import { EconomyHealthChart } from "@/components/EconomyHealthChart";
-import { ContentFeedChart } from "@/components/ContentFeedChart";
 import type { ContentFeedData } from "@/components/ContentFeedChart";
 import { AIChatWidget } from "@/components/AIChatWidget";
 import type { DashboardContext } from "@/components/AIChatWidget";
-import { UnlockInsightsSection } from "@/components/UnlockInsightsSection";
-import { PaidUsersSection } from "@/components/PaidUsersSection";
 import { UserAcquisitionSection } from "@/components/UserAcquisitionSection";
-import { SubscriptionAnalysisSection } from "@/components/SubscriptionAnalysisSection";
 import { AIInsightsSection } from "@/components/AIInsightsSection";
 import { FlywheelSection } from "@/components/FlywheelSection";
 import { ShareDataSection } from "@/components/ShareDataSection";
 import { ReferralRewardSection } from "@/components/ReferralRewardSection";
 import { FlywheelHealthDashboard } from "@/components/FlywheelHealthDashboard";
 import { RegistrationFunnelSection } from "@/components/RegistrationFunnelSection";
-import { ScratchRewardWithdrawSection } from "@/components/ScratchRewardWithdrawSection";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { TranslationKey } from "@/lib/i18n";
 import { METRIC_FORMULAS } from "@/lib/metric-formulas";
@@ -136,11 +138,21 @@ export default function DashboardPage() {
   const [unlockD7Retention, setUnlockD7Retention] = useState<{ total_unlock_users: number; d7_retained: number; rate: number } | null>(null);
   const [unlockDistribution, setUnlockDistribution] = useState<{ bucket: string; user_count: number; pct: number }[]>([]);
   const [unlockMeta, setUnlockMeta] = useState<{ days: number; cohort_start: string; cohort_end: string; distribution_total_users: number } | null>(null);
-  const [paidUsersData, setPaidUsersData] = useState<{ total_payers: number; total_revenue: number; subscription_revenue: number; arppu: number; avg_purchases: number; first_time_payers: number; repeat_payers: number; d7_retention: { total_first_payers: number; d7_retained: number; rate: number }; first_pay_distribution: { bucket: string; user_count: number; pct: number }[] } | null>(null);
+  const [paidUsersData, setPaidUsersData] = useState<{
+    total_payers: number;
+    total_revenue: number;
+    subscription_revenue: number;
+    arppu: number;
+    avg_purchases: number;
+    first_time_payers: number;
+    repeat_payers: number;
+    d7_retention: { total_first_payers: number; d7_retained: number; rate: number };
+    first_pay_distribution: { bucket: string; user_count: number; pct: number }[];
+  } | null>(null);
   const [paidUsersGeo, setPaidUsersGeo] = useState<{ country: string; country_name: string; payers: number; payer_share: number; revenue: number; revenue_share: number }[]>([]);
   const [userAcquisition, setUserAcquisition] = useState<{ channels: { source: string; medium: string; channel: string; channel_desc: string; campaign: string; campaign_label: string; new_users: number; payers: number; revenue: number; conversion: number }[]; channelsSummary: { channel: string; channel_desc: string; new_users: number; payers: number; revenue: number; conversion: number }[]; referrals: { source: string; campaign: string; campaign_label: string; medium: string; channel: string; channel_desc: string; events: number; users: number }[] }>({ channels: [], channelsSummary: [], referrals: [] });
   const [flywheelData, setFlywheelData] = useState<{ nodes: { id: string; name: string; nameCn: string; metrics: Record<string, number>; status: "healthy" | "warning" | "broken"; score: number; conversion: number | null; benchmark: string }[]; overallScore: number; summary: Record<string, number>; days: number }>({ nodes: [], overallScore: 0, summary: {}, days: 30 });
-  const [subscriptionData, setSubscriptionData] = useState<{ kpi: { total_exchange: number; auto_convert: number; manual_convert: number; total_paid: number; total_wallet_sub: number; paid_revenue: number; nonmember_hint: number; membership_entry: number; iap_start: number; iap_fail: number; topup_start: number; topup_success: number } | null; daily: { date: string; exchange: number; auto_convert: number; manual_convert: number; paid: number; nonmember_hint: number; membership_entry: number; iap_start: number; iap_fail: number; topup_start: number; topup_success: number }[]; funnel: { step: string; label: string; users: number }[]; convertMethods: { method: string; count: number }[] }>({ kpi: null, daily: [], funnel: [], convertMethods: [] });
+  const [subscriptionData, setSubscriptionData] = useState<{ kpi: { total_exchange: number; auto_convert: number; manual_convert: number; total_paid: number; total_wallet_sub: number; paid_revenue: number; nonmember_hint: number; membership_entry: number; iap_start: number; iap_fail: number; topup_start: number; topup_success: number } | null; daily: { date: string; exchange: number; auto_convert: number; manual_convert: number; paid: number; wallet_sub: number; nonmember_hint: number; membership_entry: number; iap_start: number; iap_fail: number; topup_start: number; topup_success: number }[]; funnel: { step: string; label: string; users: number }[]; convertMethods: { method: string; count: number }[] }>({ kpi: null, daily: [], funnel: [], convertMethods: [] });
   const [registrationFunnelData, setRegistrationFunnelData] = useState<{ funnel: { step: string; users: number; fromTop: number }[]; channels: { channel: string; clicked: number; success: number; failure: number }[] } | null>(null);
   const [growthBehavior, setGrowthBehavior] = useState<{
     scratch_distribution: { bucket: string; user_count: number; pct: number }[];
@@ -155,6 +167,75 @@ export default function DashboardPage() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "growth" | "monetization" | "flywheel" | "ai">("overview");
   const [authEnabled, setAuthEnabled] = useState(false);
+  /** Tracks which tab+analyticsDays bundles have been loaded (P0 tab-scoped fetch). */
+  const analyticsLoadedRef = useRef<Set<string>>(new Set());
+
+  const fetchGrowthBundle = useCallback(async () => {
+    const qs = `?days=${analyticsDays}`;
+    const [
+      ua,
+      geo,
+      cs,
+      gf,
+      regFunnel,
+      retBoth,
+      cf,
+      um,
+      acq,
+      fw,
+      gb,
+    ] = await Promise.all([
+      fetch(`/api/marketing/user-attributes${qs}`).then((r) => r.json()),
+      fetch(`/api/marketing/geo-distribution${qs}`).then((r) => r.json()),
+      fetch(`/api/marketing/creator-supply${qs}`).then((r) => r.json()),
+      fetch(`/api/marketing/growth-funnel${qs}`).then((r) => (r.ok ? r.json() : [])),
+      fetch(`/api/marketing/registration-funnel${qs}`).then((r) => (r.ok ? r.json() : { funnel: [], channels: [] })),
+      fetch(`/api/marketing/retention${qs}&cohort=both`).then((r) =>
+        r.ok ? r.json() : { signup: { chart: [] }, unlock: { chart: [] } }
+      ),
+      fetch(`/api/marketing/content-feed${qs}`).then((r) => r.json()),
+      fetch(`/api/marketing/unlock-metrics${qs}`).then((r) => (r.ok ? r.json() : null)),
+      fetch(`/api/marketing/user-acquisition${qs}`).then((r) => r.json()).catch(() => ({ channels: [], referrals: [] })),
+      fetch(`/api/marketing/flywheel${qs}`).then((r) => r.json()).catch(() => ({ nodes: [], overallScore: 0, summary: {}, days: 30 })),
+      fetch(`/api/marketing/growth-behavior${qs}`).then((r) => (r.ok ? r.json() : null)),
+    ]);
+    if (ua?.age && ua?.device) setUserAttributes(ua);
+    if (Array.isArray(geo)) setGeoDistribution(geo);
+    if (cs?.chart && cs?.data) setCreatorSupply(cs);
+    if (Array.isArray(gf)) setGrowthFunnel(gf);
+    if (regFunnel?.funnel) setRegistrationFunnelData(regFunnel);
+    if (retBoth?.signup?.chart) setRetention({ chart: retBoth.signup.chart });
+    if (retBoth?.unlock?.chart) setRetentionUnlock({ chart: retBoth.unlock.chart });
+    if (cf?.daily && cf?.sup && cf?.up) setContentFeed(cf);
+    if (um?.d7_retention) setUnlockD7Retention(um.d7_retention);
+    if (Array.isArray(um?.distribution)) setUnlockDistribution(um.distribution);
+    if (um?.cohort_start) setUnlockMeta({ days: um.days, cohort_start: um.cohort_start, cohort_end: um.cohort_end, distribution_total_users: um.distribution_total_users ?? 0 });
+    if (acq?.channels) setUserAcquisition(acq);
+    if (fw?.nodes) setFlywheelData(fw);
+    if (gb?.scratch_distribution) setGrowthBehavior(gb);
+  }, [analyticsDays]);
+
+  const fetchMonetizationBundle = useCallback(async () => {
+    const qs = `?days=${analyticsDays}`;
+    const [pu, pg, sub, mon, cs] = await Promise.all([
+      fetch(`/api/marketing/paid-users${qs}`).then((r) => r.json()).catch(() => null),
+      fetch(`/api/marketing/paid-users-geo${qs}`).then((r) => r.json()).catch(() => []),
+      fetch(`/api/marketing/subscription-analysis${qs}`).then((r) => r.json()).catch(() => ({ kpi: null, daily: [], funnel: [], convertMethods: [] })),
+      fetch(`/api/marketing/monetization${qs}`).then((r) => r.json()),
+      fetch(`/api/marketing/creator-supply${qs}`).then((r) => r.json()),
+    ]);
+    if (pu?.total_payers !== undefined) setPaidUsersData(pu);
+    if (Array.isArray(pg)) setPaidUsersGeo(pg);
+    if (sub?.kpi) setSubscriptionData(sub);
+    if (Array.isArray(mon)) setMonetization(mon);
+    if (cs?.chart && cs?.data) setCreatorSupply(cs);
+  }, [analyticsDays]);
+
+  const fetchFlywheelOnly = useCallback(async () => {
+    const qs = `?days=${analyticsDays}`;
+    const fw = await fetch(`/api/marketing/flywheel${qs}`).then((r) => r.json()).catch(() => ({ nodes: [], overallScore: 0, summary: {}, days: 30 }));
+    if (fw?.nodes) setFlywheelData(fw);
+  }, [analyticsDays]);
 
   useEffect(() => {
     fetch("/api/auth/status")
@@ -214,62 +295,68 @@ export default function DashboardPage() {
     fetchOverviewData();
   }, [trendDays, filterChannel, filterVersion, filterUserSegment, filterPlatform, filterGeo]);
 
-  // Analytics data: all analytics sections use analyticsDays
+  // Tab-scoped analytics (P0): only fetch bundles for the active tab + AI prefetch
   useEffect(() => {
-    async function fetchAnalyticsData() {
+    if (activeTab === "overview") return;
+    const key = `${activeTab}-${analyticsDays}`;
+    if (analyticsLoadedRef.current.has(key)) return;
+
+    let cancelled = false;
+    (async () => {
       setAnalyticsLoading(true);
-      setEconSegment("all");
-      const qs = `?days=${analyticsDays}`;
       try {
-        const [ua, geo, cs, gf, regFunnel, ret, retUnlock, mon, eh, cf, um, pu, pg, acq, sub, fw, gb] = await Promise.all([
-          fetch(`/api/marketing/user-attributes${qs}`).then((r) => r.json()),
-          fetch(`/api/marketing/geo-distribution${qs}`).then((r) => r.json()),
-          fetch(`/api/marketing/creator-supply${qs}`).then((r) => r.json()),
-          fetch(`/api/marketing/growth-funnel${qs}`).then((r) => (r.ok ? r.json() : [])),
-          fetch(`/api/marketing/registration-funnel${qs}`).then((r) => (r.ok ? r.json() : { funnel: [], channels: [] })),
-          fetch(`/api/marketing/retention${qs}`).then((r) => (r.ok ? r.json() : { chart: [] })),
-          fetch(`/api/marketing/retention${qs}&cohort=unlock`).then((r) => (r.ok ? r.json() : { chart: [] })),
-          fetch(`/api/marketing/monetization${qs}`).then((r) => r.json()),
-          fetch(`/api/marketing/economy-health${qs}`).then((r) => r.json()),
-          fetch(`/api/marketing/content-feed${qs}`).then((r) => r.json()),
-          fetch(`/api/marketing/unlock-metrics${qs}`).then((r) => (r.ok ? r.json() : null)),
-          fetch(`/api/marketing/paid-users${qs}`).then((r) => r.json()).catch(() => null),
-          fetch(`/api/marketing/paid-users-geo${qs}`).then((r) => r.json()).catch(() => []),
-          fetch(`/api/marketing/user-acquisition${qs}`).then((r) => r.json()).catch(() => ({ channels: [], referrals: [] })),
-          fetch(`/api/marketing/subscription-analysis${qs}`).then((r) => r.json()).catch(() => ({ kpi: null, daily: [], funnel: [], convertMethods: [] })),
-          fetch(`/api/marketing/flywheel${qs}`).then((r) => r.json()).catch(() => ({ nodes: [], overallScore: 0, summary: {}, days: 30 })),
-          fetch(`/api/marketing/growth-behavior${qs}`).then((r) => (r.ok ? r.json() : null)),
-        ]);
-        if (ua?.age && ua?.device) setUserAttributes(ua);
-        if (Array.isArray(geo)) setGeoDistribution(geo);
-        if (cs?.chart && cs?.data) setCreatorSupply(cs);
-        if (Array.isArray(gf)) setGrowthFunnel(gf);
-        if (regFunnel?.funnel) setRegistrationFunnelData(regFunnel);
-        if (ret?.chart) setRetention(ret);
-        if (retUnlock?.chart) setRetentionUnlock(retUnlock);
-        if (Array.isArray(mon)) setMonetization(mon);
-        if (eh?.chart && eh?.metrics) setEconomyHealth(eh);
-        if (cf?.daily && cf?.sup && cf?.up) setContentFeed(cf);
-        if (um?.d7_retention) setUnlockD7Retention(um.d7_retention);
-        if (Array.isArray(um?.distribution)) setUnlockDistribution(um.distribution);
-        if (um?.cohort_start) setUnlockMeta({ days: um.days, cohort_start: um.cohort_start, cohort_end: um.cohort_end, distribution_total_users: um.distribution_total_users ?? 0 });
-        if (pu?.total_payers !== undefined) setPaidUsersData(pu);
-        if (Array.isArray(pg)) setPaidUsersGeo(pg);
-        if (acq?.channels) setUserAcquisition(acq);
-        if (sub?.kpi) setSubscriptionData(sub);
-        if (fw?.nodes) setFlywheelData(fw);
-        if (gb?.scratch_distribution) setGrowthBehavior(gb);
+        if (activeTab === "growth") {
+          await fetchGrowthBundle();
+          analyticsLoadedRef.current.add(`growth-${analyticsDays}`);
+          analyticsLoadedRef.current.add(`flywheel-${analyticsDays}`);
+        } else if (activeTab === "monetization") {
+          await fetchMonetizationBundle();
+          analyticsLoadedRef.current.add(`monetization-${analyticsDays}`);
+        } else if (activeTab === "flywheel") {
+          await fetchFlywheelOnly();
+          analyticsLoadedRef.current.add(`flywheel-${analyticsDays}`);
+        } else if (activeTab === "ai") {
+          const d = analyticsDays;
+          const tasks: Promise<void>[] = [];
+          if (!analyticsLoadedRef.current.has(`growth-${d}`)) {
+            tasks.push(
+              fetchGrowthBundle().then(() => {
+                analyticsLoadedRef.current.add(`growth-${d}`);
+                analyticsLoadedRef.current.add(`flywheel-${d}`);
+              })
+            );
+          }
+          if (!analyticsLoadedRef.current.has(`monetization-${d}`)) {
+            tasks.push(
+              fetchMonetizationBundle().then(() => {
+                analyticsLoadedRef.current.add(`monetization-${d}`);
+              })
+            );
+          }
+          if (!analyticsLoadedRef.current.has(`flywheel-${d}`)) {
+            tasks.push(
+              fetchFlywheelOnly().then(() => {
+                analyticsLoadedRef.current.add(`flywheel-${d}`);
+              })
+            );
+          }
+          await Promise.all(tasks);
+        }
+        if (!cancelled) analyticsLoadedRef.current.add(key);
       } catch (e) {
         console.error("Analytics fetch error:", e);
       } finally {
-        setAnalyticsLoading(false);
+        if (!cancelled) setAnalyticsLoading(false);
       }
-    }
-    fetchAnalyticsData();
-  }, [analyticsDays]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, analyticsDays, fetchGrowthBundle, fetchMonetizationBundle, fetchFlywheelOnly]);
 
-  // Economy Health segment toggle
+  // Economy Health segment toggle (monetization tab only — avoids duplicate fetch on overview)
   useEffect(() => {
+    if (activeTab !== "monetization") return;
     async function fetchEconSegment() {
       setEconLoading(true);
       try {
@@ -283,7 +370,7 @@ export default function DashboardPage() {
       }
     }
     fetchEconSegment();
-  }, [econSegment, analyticsDays]);
+  }, [econSegment, analyticsDays, activeTab]);
 
   if (loading && !kpi) {
     return (

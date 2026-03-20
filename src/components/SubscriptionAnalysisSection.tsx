@@ -20,6 +20,7 @@ type DailyRow = {
   auto_convert: number;
   manual_convert: number;
   paid: number;
+  wallet_sub: number;
   nonmember_hint: number;
   membership_entry: number;
   iap_start: number;
@@ -98,8 +99,10 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
   }
 
   const walletSub = kpi.total_wallet_sub ?? 0;
-  const totalSubscribers = kpi.total_exchange + kpi.total_paid + walletSub;
-  const exchangePct = totalSubscribers > 0 ? ((kpi.total_exchange / totalSubscribers) * 100).toFixed(1) : "0";
+  /** Paid + wallet only; exchangers excluded (per product definition). */
+  const totalSubscribers = kpi.total_paid + walletSub;
+  const mixTotal = kpi.total_exchange + kpi.total_paid + walletSub;
+  const exchangePct = mixTotal > 0 ? ((kpi.total_exchange / mixTotal) * 100).toFixed(1) : "0";
   const paidPct = totalSubscribers > 0 ? ((kpi.total_paid / totalSubscribers) * 100).toFixed(1) : "0";
   const walletPct = totalSubscribers > 0 ? ((walletSub / totalSubscribers) * 100).toFixed(1) : "0";
   const iapSuccessRate = kpi.iap_start > 0 ? ((kpi.total_paid / kpi.iap_start) * 100).toFixed(1) : "0";
@@ -138,7 +141,7 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
               <InfoTooltip metricKey="SUB_EXCHANGE" />
             </p>
             <p className="mt-1 text-xl font-bold text-[#34a853]">{kpi.total_exchange.toLocaleString()}</p>
-            <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">{exchangePct}% of total</p>
+            <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">{exchangePct}% of paid+wallet+exchange</p>
           </div>
           <div className="rounded-lg p-3" style={subCardStyle}>
             <p className="text-[10px] font-medium text-[var(--secondary-text)]">
@@ -146,7 +149,7 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
               <InfoTooltip metricKey="SUB_PAID" />
             </p>
             <p className="mt-1 text-xl font-bold text-[#4285f4]">{kpi.total_paid.toLocaleString()}</p>
-            <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">{paidPct}% of total</p>
+            <p className="mt-0.5 text-[9px] text-[var(--secondary-text)]">{paidPct}% of paid+wallet</p>
           </div>
           <div className="rounded-lg p-3" style={subCardStyle}>
             <p className="text-[10px] font-medium text-[var(--secondary-text)]">
@@ -270,11 +273,13 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
                   <Bar dataKey="auto_convert" name={t("subAutoConvert")} stackId="a" fill="#34a853" radius={[0, 0, 0, 0]} />
                   <Bar dataKey="manual_convert" name={t("subManualConvert")} stackId="a" fill="#81c995" radius={[2, 2, 0, 0]} />
                   <Bar dataKey="paid" name={t("subPaid")} fill="#4285f4" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="wallet_sub" name={t("subWallet")} fill="#9aa0a6" radius={[2, 2, 0, 0]} />
                 </>
               ) : (
                 <>
                   <Bar dataKey="exchange" name={t("subExchange")} fill="#34a853" radius={[2, 2, 0, 0]} />
                   <Bar dataKey="paid" name={t("subPaid")} fill="#4285f4" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="wallet_sub" name={t("subWallet")} fill="#9aa0a6" radius={[2, 2, 0, 0]} />
                 </>
               )}
             </BarChart>
@@ -295,7 +300,8 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
                   </>
                 )}
                 <th className="sticky top-0 bg-[var(--background)] px-2 py-1.5 font-medium text-right">{t("subPaid")}</th>
-                <th className="sticky top-0 bg-[var(--background)] px-2 py-1.5 font-medium text-right">Total</th>
+                <th className="sticky top-0 bg-[var(--background)] px-2 py-1.5 font-medium text-right">{t("subWallet")}</th>
+                <th className="sticky top-0 bg-[var(--background)] px-2 py-1.5 font-medium text-right">Paid+Wallet</th>
               </tr>
             </thead>
             <tbody>
@@ -310,7 +316,8 @@ export function SubscriptionAnalysisSection({ kpi, daily, funnel, convertMethods
                     </>
                   )}
                   <td className="px-2 py-1 text-right">{d.paid}</td>
-                  <td className="px-2 py-1 text-right font-medium">{d.exchange + d.paid}</td>
+                  <td className="px-2 py-1 text-right">{d.wallet_sub}</td>
+                  <td className="px-2 py-1 text-right font-medium">{d.paid + d.wallet_sub}</td>
                 </tr>
               ))}
             </tbody>
