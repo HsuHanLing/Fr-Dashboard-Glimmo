@@ -312,8 +312,10 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Users who converted to VIP by exchanging in-app balance. Convert methods: Diamond → coin, Cash → coin (convertMethod from event_params). Auto-convert = auto_convert_trigger; manual = Click_CashWalletConfirmConvert. IMPORTANT: Conversion feature is available on iOS only; not supported on Android.",
   },
   SUB_PAID: {
-    formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('app_store_subscription_convert','app_store_subscription_renew','iap_success','in_app_purchase') OR (iap_success AND product_id='subscription')",
-    description: "Users who paid real money to subscribe (store subscription events, iap_success, in_app_purchase as applicable). Excludes wallet_subscribe_success (in-app cash wallet) and top-up.",
+    formula:
+      "COUNT(DISTINCT user_pseudo_id) WHERE event_name IN ('app_store_subscription_convert','app_store_subscription_renew','iap_success','in_app_purchase') AND product_id LIKE '%subscription%'",
+    description:
+      "Paid (real $) subscription users: same events as subscription analysis daily/totals; product_id must include 'subscription' (excludes top-up and non-subscription IAP). Excludes wallet_subscribe_success.",
   },
   SUB_WALLET: {
     formula: "COUNT(DISTINCT user_pseudo_id) WHERE event_name = 'wallet_subscribe_success'",
@@ -734,8 +736,9 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "新手引导完成（4 步引导结束）。",
   },
   REG_ENTER_MAIN: {
-    formula: "First screen_view / auth_screen_view after registration success",
-    description: "注册成功后首次进入主流程页面（任意页面曝光）。",
+    formula: "First Enter_NewUserLandSupPage after registration success (REG_EVENTS)",
+    description:
+      "Landed: first Enter_NewUserLandSupPage after any registration success event. Aligns with logged-in DAU entry (same event).",
   },
   REG_FUNNEL_CONVERSION: {
     formula: "(Users at step / App Open users) × 100%",

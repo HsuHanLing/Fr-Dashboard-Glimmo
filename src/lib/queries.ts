@@ -983,7 +983,7 @@ export function getRegistrationFunnelQuery(days: number = 30) {
         MIN(CASE
           WHEN b.event_name = 'auth_entry_click'
             OR b.event_name IN ('auth_nickname_next','auth_submit_result','auth_oauth_result','auth_method_switch')
-            OR b.event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success','signin_credit_earned')
+            OR b.event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success')
           THEN b.event_timestamp END
         ) as any_action_ts,
         -- First entry: any auth_entry_click (Continue or Sign up)
@@ -992,13 +992,13 @@ export function getRegistrationFunnelQuery(days: number = 30) {
         MIN(CASE WHEN b.event_name = 'auth_nickname_next' THEN b.event_timestamp END) as auth_nickname_next_ts,
         MIN(CASE WHEN b.event_name = 'auth_submit_result' THEN b.event_timestamp END) as auth_submit_result_ts,
         MIN(CASE WHEN b.event_name = 'auth_oauth_result' OR b.event_name = 'auth_method_switch' THEN b.event_timestamp END) as auth_oauth_or_switch_ts,
-        MIN(CASE WHEN b.event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success','signin_credit_earned') THEN b.event_timestamp END) as legacy_success_ts,
+        MIN(CASE WHEN b.event_name IN ('Success_GoogleRegister','Success_AppleRegister','Register_Email_Success','Register_Number_Success','Login_Email_Success','Login_Number_Success') THEN b.event_timestamp END) as legacy_success_ts,
         -- Click sign up: auth_entry_click with cta_name='signup' only
         MIN(CASE WHEN b.event_name = 'auth_entry_click' AND LOWER(COALESCE(b.cta_name,'')) = 'signup' THEN b.event_timestamp END) as click_signup_ts,
         -- Registered: all registration success events (aligned with growth funnel)
         MIN(CASE WHEN ${REG_EVENTS} THEN b.event_timestamp END) as reg_ts,
-        -- Landed: first page view after any registration success
-        MIN(CASE WHEN b.event_name IN ('All_PageBehavior','auth_screen_view')
+        -- Landed: first Enter_NewUserLandSupPage after any registration success
+        MIN(CASE WHEN b.event_name IN ('Enter_NewUserLandSupPage')
           AND (SELECT MIN(b2.event_timestamp) FROM base b2
                WHERE b2.user_pseudo_id = s.user_pseudo_id AND ${REG_EVENTS_B2}
           ) IS NOT NULL
@@ -1432,7 +1432,7 @@ export function getPaidUsersKPIQuery(days: number = 30) {
           'app_store_subscription_convert','app_store_subscription_renew')
     ),
     all_time_first AS (
-      SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) as first_pay_dt
+      SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) as first_pay_dt, count(*) as pay_count
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableSuffixSince(lookback)}
         AND event_name IN ('purchase','in_app_purchase',
@@ -1441,10 +1441,9 @@ export function getPaidUsersKPIQuery(days: number = 30) {
     ),
     payer_classify AS (
       SELECT DISTINCT pe.user_pseudo_id,
-        CASE WHEN af.first_pay_dt >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
+        CASE WHEN af.pay_count = 1
           THEN 'first_time' ELSE 'repeat' END as payer_type
-      FROM period_events pe
-      JOIN all_time_first af ON pe.user_pseudo_id = af.user_pseudo_id
+      FROM all_time_first
     ),
     sub_revenue AS (
       SELECT
@@ -2018,7 +2017,7 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
         COUNT(DISTINCT CASE WHEN event_name = 'Click_CashWalletConfirmConvert'
           THEN user_pseudo_id END) as manual_convert_users,
         COUNT(DISTINCT CASE WHEN event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success', 'in_app_purchase')
-          OR (event_name = 'iap_success' AND product_id = 'subscription')
+          AND product_id LIKE '%subscription%'
           THEN user_pseudo_id END) as paid_sub_users,
         COUNT(DISTINCT CASE WHEN event_name = 'wallet_subscribe_success'
           THEN user_pseudo_id END) as wallet_sub_users,
@@ -2026,9 +2025,9 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
           THEN user_pseudo_id END) as nonmember_hint_users,
         COUNT(DISTINCT CASE WHEN event_name = 'click_membership_entry'
           THEN user_pseudo_id END) as membership_entry_users,
-        COUNT(DISTINCT CASE WHEN event_name = 'iap_start' AND product_id = 'subscription'
+        COUNT(DISTINCT CASE WHEN event_name = 'iap_start' AND product_id LIKE '%subscription%'
           THEN user_pseudo_id END) as iap_start_users,
-        COUNT(DISTINCT CASE WHEN event_name = 'iap_fail'
+        COUNT(DISTINCT CASE WHEN event_name = 'iap_fail' AND product_id LIKE '%subscription%'
           THEN user_pseudo_id END) as iap_fail_users,
         COUNT(DISTINCT CASE WHEN event_name = 'iap_start' AND product_id LIKE 'top-up%'
           THEN user_pseudo_id END) as topup_start_users,
@@ -2044,7 +2043,7 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
         COUNT(DISTINCT CASE WHEN event_name = 'Click_CashWalletConfirmConvert'
           THEN user_pseudo_id END) as total_manual_convert,
         COUNT(DISTINCT CASE WHEN event_name IN ('app_store_subscription_convert','app_store_subscription_renew', 'iap_success','in_app_purchase')
-          OR (event_name = 'iap_success' AND product_id = 'subscription')
+          AND product_id LIKE '%subscription%'
           THEN user_pseudo_id END) as total_paid_sub,
         COUNT(DISTINCT CASE WHEN event_name = 'wallet_subscribe_success'
           THEN user_pseudo_id END) as total_wallet_sub,
@@ -2052,9 +2051,9 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
           THEN user_pseudo_id END) as total_nonmember_hint,
         COUNT(DISTINCT CASE WHEN event_name = 'click_membership_entry'
           THEN user_pseudo_id END) as total_membership_entry,
-        COUNT(DISTINCT CASE WHEN event_name = 'iap_start' AND product_id = 'subscription'
+          COUNT(DISTINCT CASE WHEN event_name = 'iap_start' AND product_id LIKE '%subscription%'
           THEN user_pseudo_id END) as total_iap_start,
-        COUNT(DISTINCT CASE WHEN event_name = 'iap_fail'
+        COUNT(DISTINCT CASE WHEN event_name = 'iap_fail' AND product_id LIKE '%subscription%' AND product_id NOT LIKE 'top-up%'
           THEN user_pseudo_id END) as total_iap_fail,
         COUNT(DISTINCT CASE WHEN event_name IN ('auto_convert_trigger',
           'Click_CashWalletConfirmConvert') THEN user_pseudo_id END) as total_exchange_users,
@@ -2087,7 +2086,7 @@ export function getSubscriptionAnalysisQuery(days: number = 30) {
           event_name IN ('app_store_subscription_convert', 'app_store_subscription_renew', 'iap_success', 'in_app_purchase')
           OR LOWER(COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_type'), '')) LIKE '%sub%'
           OR LOWER(COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'item_category'), '')) LIKE '%sub%'
-          OR COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'), '') = 'subscription'
+          OR COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'), '') LIKE '%subscription%'
         )
     )
     SELECT
