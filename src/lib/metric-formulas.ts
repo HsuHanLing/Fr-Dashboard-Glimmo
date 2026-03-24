@@ -43,7 +43,8 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   },
   WITHDRAWAL: {
     formula: "SUM(SAFE_CAST(withdraw_amount AS FLOAT64)) WHERE event_name = 'withdraw_result'",
-    description: "Total withdrawal amount from withdraw_result events. Amount extracted from event_params.withdraw_amount, cast to FLOAT64.",
+    description:
+      "Total withdrawal amount from withdraw_result events. Amount extracted from event_params.withdraw_amount, cast to FLOAT64. In the Daily trend table, values are shown in USD with up to two decimal places when the total for that day is fractional (e.g. $0.30 instead of $0).",
   },
   ROI: {
     formula: "Revenue / Cost (or Revenue / Spend)",

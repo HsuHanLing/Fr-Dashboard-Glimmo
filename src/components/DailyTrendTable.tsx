@@ -31,6 +31,16 @@ function formatCurrency(n: number) {
   }).format(n);
 }
 
+/** Withdrawal amounts can be sub-dollar; show cents (e.g. $0.30) instead of rounding to $0. */
+function formatWithdrawalCurrency(n: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
 function formatDate(d: string) {
   const [y, m, day] = d.split("-");
   return `${m}-${day}`;
@@ -167,7 +177,7 @@ export function DailyTrendTable({ data }: { data: Row[] }) {
               <CellWithTooltip value={formatNum(row.unlock_ge2)} metricKey="UNLOCK_GE2" />
               <CellWithTooltip value={formatNum(row.payers)} metricKey="PAYERS" />
               <CellWithTooltip value={formatCurrency(row.revenue)} metricKey="REVENUE" />
-              <CellWithTooltip value={formatCurrency(row.withdrawal)} metricKey="WITHDRAWAL" />
+              <CellWithTooltip value={formatWithdrawalCurrency(row.withdrawal)} metricKey="WITHDRAWAL" />
             </tr>
           ))}
         </tbody>
