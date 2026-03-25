@@ -1563,7 +1563,7 @@ export function getPaidUsersFirstPayDistQuery(days: number = 30) {
   `;
 }
 
-// Repurchase: lifetime in_app_purchase excluding subscription product_ids (exclusivemonthly, exclusiveaccess, subscription); KPI + daily + platform (distinct users) + frequency buckets (2 / 3 / 4 / 5+)
+// Repurchase: lifetime in_app_purchase excluding subscription product_ids (exclusivemonthly, exclusiveaccess, subscription); all user-facing counts use COUNT(DISTINCT user_pseudo_id) (daily spine, KPIs, cohorts, platform, frequency); avg_days_to_second is AVG over one row per user.
 export function getRepurchaseQuery(days: number = 30) {
   /** ~3y export window — balances lifetime semantics vs scan cost (was 10y). */
   const life = 1095;
@@ -1591,7 +1591,7 @@ user_purchase_totals AS (
 purchase_frequency AS (
   SELECT
     bucket,
-    COUNT(*) AS user_count,
+    COUNT(DISTINCT user_pseudo_id) AS user_count,
     sort_key
   FROM (
     SELECT
@@ -1643,8 +1643,8 @@ daily_spine AS (
 daily_agg AS (
   SELECT
     FORMAT_DATE('%Y-%m-%d', d.dt) AS date,
-    COUNTIF(d.dt = u.first_dt) AS first_purchase_users,
-    COUNTIF(d.dt = u.second_dt) AS second_purchase_users
+    COUNT(DISTINCT CASE WHEN d.dt = u.first_dt THEN u.user_pseudo_id END) AS first_purchase_users,
+    COUNT(DISTINCT CASE WHEN d.dt = u.second_dt THEN u.user_pseudo_id END) AS second_purchase_users
   FROM daily_spine d
   LEFT JOIN user_lifetime u ON d.dt = u.first_dt OR d.dt = u.second_dt
   GROUP BY 1
@@ -1652,7 +1652,7 @@ daily_agg AS (
 platform_breakdown AS (
   SELECT
     platform,
-    COUNT(distinct user_pseudo_id) AS total_users,
+    COUNT(DISTINCT user_pseudo_id) AS total_users,
     COUNT(DISTINCT CASE WHEN second_dt IS NOT NULL THEN user_pseudo_id END) AS repurchasers,
     -- Calculate rate based on the distinct counts above
     SAFE_DIVIDE(
@@ -1663,30 +1663,48 @@ platform_breakdown AS (
   GROUP BY 1
 )
 SELECT
-  COUNT(*) AS total_purchase_users,
-  COUNTIF(second_dt IS NOT NULL) AS repurchasers,
-  SAFE_DIVIDE(COUNTIF(second_dt IS NOT NULL), COUNT(*)) AS repurchase_rate,
-  AVG(days_to_second) AS avg_days_to_repurchase,
+  COUNT(DISTINCT user_pseudo_id) AS total_purchase_users,
+  COUNT(DISTINCT CASE WHEN second_dt IS NOT NULL THEN user_pseudo_id END) AS repurchasers,
+  SAFE_DIVIDE(
+    COUNT(DISTINCT CASE WHEN second_dt IS NOT NULL THEN user_pseudo_id END),
+    NULLIF(COUNT(DISTINCT user_pseudo_id), 0)
+  ) AS repurchase_rate,
+  (SELECT AVG(dts) FROM (
+    SELECT ANY_VALUE(days_to_second) AS dts
+    FROM user_lifetime
+    WHERE second_dt IS NOT NULL
+    GROUP BY user_pseudo_id
+  )) AS avg_days_to_repurchase,
   
   -- 7d / 30d rates: numerator = eligible users who repurchased within window; denominator = eligible cohort
-  COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) AS eligible_first_for_7d,
+  COUNT(DISTINCT CASE
+    WHEN first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) THEN user_pseudo_id
+  END) AS eligible_first_for_7d,
   SAFE_DIVIDE(
-    COUNTIF(
-      first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-      AND second_dt IS NOT NULL
-      AND days_to_second <= 7
-    ),
-    NULLIF(COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)), 0)
+    COUNT(DISTINCT CASE
+      WHEN first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+        AND second_dt IS NOT NULL
+        AND days_to_second <= 7
+      THEN user_pseudo_id
+    END),
+    NULLIF(COUNT(DISTINCT CASE
+      WHEN first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) THEN user_pseudo_id
+    END), 0)
   ) AS repurchase_rate_7d,
   
-  COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) AS eligible_first_for_30d,
+  COUNT(DISTINCT CASE
+    WHEN first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) THEN user_pseudo_id
+  END) AS eligible_first_for_30d,
   SAFE_DIVIDE(
-    COUNTIF(
-      first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-      AND second_dt IS NOT NULL
-      AND days_to_second <= 30
-    ),
-    NULLIF(COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)), 0)
+    COUNT(DISTINCT CASE
+      WHEN first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+        AND second_dt IS NOT NULL
+        AND days_to_second <= 30
+      THEN user_pseudo_id
+    END),
+    NULLIF(COUNT(DISTINCT CASE
+      WHEN first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) THEN user_pseudo_id
+    END), 0)
   ) AS repurchase_rate_30d,
 
   -- Nested Arrays for Dashboarding

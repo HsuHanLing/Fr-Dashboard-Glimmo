@@ -283,22 +283,22 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
       "Unique users with at least two qualifying in_app_purchase events (lifetime): same product_id exclusions as repurchase SQL. First and second purchase are the 1st and 2nd in_app_purchase by event_timestamp in the scan window (~3y). Frequency chart buckets: 2, 3, 4, 5+ total purchases.",
   },
   PAID_REPURCHASE_RATE: {
-    formula: "Repurchasers / Users with ≥1 in_app_purchase (lifetime)",
-    description: "Share of users with at least one in_app_purchase who also have a second in_app_purchase.",
+    formula: "COUNT(DISTINCT repurchasers) / COUNT(DISTINCT users with ≥1 qualifying IAP)",
+    description: "Share of users with at least one qualifying in_app_purchase who also have a second; all user counts use DISTINCT user_pseudo_id in SQL.",
   },
   PAID_AVG_DAYS_REPURCHASE: {
-    formula: "AVG(DATE(second in_app_purchase) - DATE(first in_app_purchase)) for users with ≥2",
-    description: "Mean calendar days between first and second in_app_purchase.",
+    formula: "AVG(days_to_second) with one row per user_pseudo_id (users with ≥2 purchases)",
+    description: "Mean calendar days between first and second qualifying in_app_purchase; averaged once per distinct user.",
   },
   PAID_REPURCHASE_7D: {
-    formula: "(Users with 2nd purchase within 7d of 1st) / (Users whose first purchase was ≥7 days ago)",
+    formula: "COUNT(DISTINCT eligible repurchasers within 7d) / COUNT(DISTINCT eligible cohort)",
     description:
-      "Share of users in the 7-day cohort (first in_app_purchase at least 7 days ago) who had a second in_app_purchase within 7 calendar days of the first. Numerator requires eligibility so it matches the denominator.",
+      "Share of users in the 7-day cohort (first qualifying IAP at least 7 days ago) who had a second IAP within 7 calendar days. Numerator and denominator use DISTINCT user_pseudo_id.",
   },
   PAID_REPURCHASE_30D: {
-    formula: "(Users with 2nd purchase within 30d of 1st) / (Users whose first purchase was ≥30 days ago)",
+    formula: "COUNT(DISTINCT eligible repurchasers within 30d) / COUNT(DISTINCT eligible cohort)",
     description:
-      "Share of users in the 30-day cohort (first in_app_purchase at least 30 days ago) who had a second in_app_purchase within 30 calendar days of the first.",
+      "Same as 7d with a 30-day window; DISTINCT user_pseudo_id on both parts.",
   },
   PAID_REPURCHASE_FREQUENCY_BUCKETS: {
     formula:
