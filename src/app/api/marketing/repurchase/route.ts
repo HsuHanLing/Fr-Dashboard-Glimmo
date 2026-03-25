@@ -16,6 +16,7 @@ const EMPTY_REPURCHASE = {
   eligible_first_for_30d: 0,
   daily: [] as { date: string; first_purchase_users: number; second_purchase_users: number }[],
   platform_breakdown: [] as { platform: string; total_users: number; repurchasers: number; repurchase_rate_pct: number }[],
+  purchase_frequency: [] as { bucket: string; users: number; pct: number }[],
 };
 
 export async function GET(request: Request) {
@@ -45,6 +46,18 @@ export async function GET(request: Request) {
       repurchase_rate_pct: pct(p.repurchase_rate),
     }));
 
+    type FreqRow = { bucket: string; user_count: number; sort_key?: number };
+    const freqRaw = (rep.purchase_frequency_data as FreqRow[] | null | undefined) ?? [];
+    const freqTotal = freqRaw.reduce((s, r) => s + Number(r.user_count ?? 0), 0);
+    const purchase_frequency = freqRaw.map((r) => {
+      const users = Number(r.user_count ?? 0);
+      return {
+        bucket: String(r.bucket ?? ""),
+        users,
+        pct: freqTotal > 0 ? Math.round((users / freqTotal) * 100000) / 1000 : 0,
+      };
+    });
+
     return NextResponse.json({
       total_purchase_users: Number(rep.total_purchase_users ?? 0),
       repurchasers: Number(rep.repurchasers ?? 0),
@@ -57,6 +70,7 @@ export async function GET(request: Request) {
       eligible_first_for_30d: Number(rep.eligible_first_for_30d ?? 0),
       daily,
       platform_breakdown,
+      purchase_frequency,
     });
   } catch (error) {
     console.error("BigQuery repurchase error:", error);

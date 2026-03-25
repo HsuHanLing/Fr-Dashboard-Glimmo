@@ -1563,8 +1563,7 @@ export function getPaidUsersFirstPayDistQuery(days: number = 30) {
   `;
 }
 
-// Repurchase: lifetime first/second in_app_purchase; KPI + daily + platform breakdown
-// Same event filter as Payer D7 retention: only event_name = 'in_app_purchase' (all rows; ranking by event_timestamp).
+// Repurchase: lifetime in_app_purchase (non-subscription SKUs); KPI + daily + platform + frequency buckets (2 / 3 / 4 / 5+)
 export function getRepurchaseQuery(days: number = 30) {
   /** ~3y export window — balances lifetime semantics vs scan cost (was 10y). */
   const life = 1095;
@@ -1575,11 +1574,39 @@ WITH success_purchases AS (
     event_timestamp,
     PARSE_DATE('%Y%m%d', event_date) AS dt,
     COALESCE(NULLIF(TRIM(UPPER(platform)), ''), 'UNKNOWN') AS platform,
-    -- Rank purchases per user
     ROW_NUMBER() OVER (PARTITION BY user_pseudo_id ORDER BY event_timestamp ASC) AS rn
   FROM \`${dataset()}.${table()}\`
   WHERE ${lifetimeTableFilter(life)}
     AND event_name = 'in_app_purchase'
+    AND COALESCE(
+      (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id' LIMIT 1),
+      ''
+    ) NOT IN ('exclusivemonthly', 'exclusiveaccess')
+),
+user_purchase_totals AS (
+  SELECT user_pseudo_id, COUNT(*) AS n
+  FROM success_purchases
+  GROUP BY 1
+),
+purchase_frequency AS (
+  SELECT
+    bucket,
+    COUNT(*) AS user_count,
+    sort_key
+  FROM (
+    SELECT
+      user_pseudo_id,
+      CASE
+        WHEN n = 2 THEN '2'
+        WHEN n = 3 THEN '3'
+        WHEN n = 4 THEN '4'
+        ELSE '5+'
+      END AS bucket,
+      CASE WHEN n >= 5 THEN 5 ELSE n END AS sort_key
+    FROM user_purchase_totals
+    WHERE n >= 2
+  )
+  GROUP BY bucket, sort_key
 ),
 first_ts AS (
   SELECT 
@@ -1594,7 +1621,7 @@ second_ts AS (
     user_pseudo_id, 
     event_timestamp AS second_ts
   FROM success_purchases
-  WHERE rn = 2 -- Specifically get the second purchase
+  WHERE rn = 2
 ),
 user_lifetime AS (
   SELECT
@@ -1660,7 +1687,8 @@ SELECT
 
   -- Nested Arrays for Dashboarding
   (SELECT ARRAY_AGG(STRUCT(date, first_purchase_users, second_purchase_users) ORDER BY date) FROM daily_agg) AS daily_data,
-  (SELECT ARRAY_AGG(STRUCT(platform, total_users, repurchasers, repurchase_rate) ORDER BY total_users DESC) FROM platform_breakdown) AS platform_breakdown
+  (SELECT ARRAY_AGG(STRUCT(platform, total_users, repurchasers, repurchase_rate) ORDER BY total_users DESC) FROM platform_breakdown) AS platform_breakdown,
+  (SELECT ARRAY_AGG(STRUCT(bucket, user_count, sort_key) ORDER BY sort_key) FROM purchase_frequency) AS purchase_frequency_data
 FROM user_lifetime
 `;
 }

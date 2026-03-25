@@ -31,6 +31,7 @@ type RepurchaseData = {
   eligible_first_for_30d: number;
   daily: { date: string; first_purchase_users: number; second_purchase_users: number }[];
   platform_breakdown: { platform: string; total_users: number; repurchasers: number; repurchase_rate_pct: number }[];
+  purchase_frequency: { bucket: string; users: number; pct: number }[];
 };
 
 type PaidData = {
@@ -94,7 +95,13 @@ export function PaidUsersSection({ data, geo, analyticsDays, t }: Props) {
     fetch(`/api/marketing/repurchase?days=${analyticsDays}`)
       .then((r) => r.json())
       .then((d) => {
-        if (!cancelled && d && typeof d.total_purchase_users === "number") setRepurchase(d as RepurchaseData);
+        if (!cancelled && d && typeof d.total_purchase_users === "number") {
+          const r = d as RepurchaseData;
+          setRepurchase({
+            ...r,
+            purchase_frequency: Array.isArray(r.purchase_frequency) ? r.purchase_frequency : [],
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) setRepurchase(null);
@@ -236,6 +243,44 @@ export function PaidUsersSection({ data, geo, analyticsDays, t }: Props) {
               </p>
             </div>
           </div>
+          {repurchase.purchase_frequency.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-0.5 flex items-center text-[11px] font-medium text-[var(--secondary-text)]">
+                {t("paidRepurchaseFrequencyTitle")}
+                <InfoTooltip metricKey="PAID_REPURCHASE_FREQUENCY_BUCKETS" />
+              </p>
+              <p className="mb-2 text-[10px] text-[var(--secondary-text)]">{t("paidRepurchaseFrequencyDesc")}</p>
+              <div style={{ width: "100%", height: 200 }}>
+                <ResponsiveContainer>
+                  <BarChart
+                    data={repurchase.purchase_frequency}
+                    margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis
+                      dataKey="bucket"
+                      tick={{ fontSize: 10, fill: "var(--secondary-text)" }}
+                      tickFormatter={(v: string) => (v === "5+" ? "5+" : v)}
+                    />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--secondary-text)" }} allowDecimals={false} width={40} />
+                    <RechartsTooltip
+                      formatter={(value: number | string, _name, item) => {
+                        const pct = (item?.payload as { pct?: number } | undefined)?.pct ?? 0;
+                        return [`${Number(value).toLocaleString()} (${pct}%)`, t("paidRepurchaseFrequencyUsers")];
+                      }}
+                      labelFormatter={(label) => `${t("paidRepurchaseFrequencyTotalPurchases")}: ${label}`}
+                      contentStyle={{ fontSize: 11, backgroundColor: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8 }}
+                    />
+                    <Bar dataKey="users" name={t("paidRepurchaseFrequencyUsers")} radius={[4, 4, 0, 0]}>
+                      {repurchase.purchase_frequency.map((_, i) => (
+                        <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
           {repurchase.daily.length > 0 && (
             <div className="mb-4">
               <p className="mb-2 text-[11px] font-medium text-[var(--secondary-text)]">{t("paidRepurchaseDaily")}</p>

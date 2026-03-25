@@ -19,6 +19,7 @@ const EMPTY_REPURCHASE = {
   eligible_first_for_30d: 0,
   daily: [] as { date: string; first_purchase_users: number; second_purchase_users: number }[],
   platform_breakdown: [] as { platform: string; total_users: number; repurchasers: number; repurchase_rate_pct: number }[],
+  purchase_frequency: [] as { bucket: string; users: number; pct: number }[],
 };
 
 const EMPTY = {
