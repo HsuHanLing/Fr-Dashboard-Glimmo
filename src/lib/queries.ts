@@ -1497,7 +1497,7 @@ export function getPaidUsersD7RetentionQuery(days: number = 30) {
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableSuffixSince(lookback)}
         AND PARSE_DATE('%Y%m%d', event_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback} DAY)
-        AND event_name IN ('purchase','in_app_purchase')
+        AND event_name = 'in_app_purchase'
       GROUP BY 1
       HAVING first_pay_dt >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
         AND first_pay_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
@@ -1563,131 +1563,109 @@ export function getPaidUsersFirstPayDistQuery(days: number = 30) {
   `;
 }
 
-// Repurchase: lifetime first/second successful purchase; KPI + daily + platform breakdown
-// Events: PURCHASE_EVENT_NAMES. Success: revenue > 0 OR iap_success (wallet / zero-USD IAP).
+// Repurchase: lifetime first/second in_app_purchase; KPI + daily + platform breakdown
+// Same event filter as Payer D7 retention: only event_name = 'in_app_purchase' (all rows; ranking by event_timestamp).
 export function getRepurchaseQuery(days: number = 30) {
   /** ~3y export window — balances lifetime semantics vs scan cost (was 10y). */
   const life = 1095;
   return `
-    WITH success_purchases AS (
-      SELECT
-        user_pseudo_id,
-        event_timestamp,
-        PARSE_DATE('%Y%m%d', event_date) AS dt,
-        COALESCE(NULLIF(TRIM(UPPER(platform)), ''), 'UNKNOWN') AS platform
-      FROM \`${dataset()}.${table()}\`
-      WHERE ${lifetimeTableFilter(life)}
-        AND event_name IN ${PURCHASE_EVENT_NAMES}
-        AND (
-          COALESCE(event_value_in_usd, 0) > 0
-          OR event_name = 'iap_success'
-        )
+WITH success_purchases AS (
+  SELECT
+    user_pseudo_id,
+    event_timestamp,
+    PARSE_DATE('%Y%m%d', event_date) AS dt,
+    COALESCE(NULLIF(TRIM(UPPER(platform)), ''), 'UNKNOWN') AS platform,
+    -- Rank purchases per user
+    ROW_NUMBER() OVER (PARTITION BY user_pseudo_id ORDER BY event_timestamp ASC) AS rn
+  FROM \`${dataset()}.${table()}\`
+  WHERE ${lifetimeTableFilter(life)}
+    AND event_name = 'in_app_purchase'
+),
+first_ts AS (
+  SELECT 
+    user_pseudo_id, 
+    event_timestamp AS first_ts,
+    platform
+  FROM success_purchases
+  WHERE rn = 1
+),
+second_ts AS (
+  SELECT 
+    user_pseudo_id, 
+    event_timestamp AS second_ts
+  FROM success_purchases
+  WHERE rn = 2 -- Specifically get the second purchase
+),
+user_lifetime AS (
+  SELECT
+    f.user_pseudo_id,
+    DATE(TIMESTAMP_MICROS(f.first_ts)) AS first_dt,
+    DATE(TIMESTAMP_MICROS(s.second_ts)) AS second_dt,
+    DATE_DIFF(DATE(TIMESTAMP_MICROS(s.second_ts)), DATE(TIMESTAMP_MICROS(f.first_ts)), DAY) AS days_to_second,
+    f.platform
+  FROM first_ts f
+  LEFT JOIN second_ts s ON f.user_pseudo_id = s.user_pseudo_id
+),
+daily_spine AS (
+  SELECT d AS dt
+  FROM UNNEST(GENERATE_DATE_ARRAY(
+    DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY), -- Extended slightly for better trend visibility
+    CURRENT_DATE()
+  )) AS d
+),
+daily_agg AS (
+  SELECT
+    FORMAT_DATE('%Y-%m-%d', d.dt) AS date,
+    COUNTIF(d.dt = u.first_dt) AS first_purchase_users,
+    COUNTIF(d.dt = u.second_dt) AS second_purchase_users
+  FROM daily_spine d
+  LEFT JOIN user_lifetime u ON d.dt = u.first_dt OR d.dt = u.second_dt
+  GROUP BY 1
+),
+platform_breakdown AS (
+  SELECT
+    platform,
+    COUNT(*) AS total_users,
+    COUNTIF(second_dt IS NOT NULL) AS repurchasers,
+    SAFE_DIVIDE(COUNTIF(second_dt IS NOT NULL), COUNT(*)) AS repurchase_rate
+  FROM user_lifetime
+  GROUP BY 1
+)
+SELECT
+  COUNT(*) AS total_purchase_users,
+  COUNTIF(second_dt IS NOT NULL) AS repurchasers,
+  SAFE_DIVIDE(COUNTIF(second_dt IS NOT NULL), COUNT(*)) AS repurchase_rate,
+  AVG(days_to_second) AS avg_days_to_repurchase,
+  
+  -- 7d / 30d rates: numerator = eligible users who repurchased within window; denominator = eligible cohort
+  COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) AS eligible_first_for_7d,
+  SAFE_DIVIDE(
+    COUNTIF(
+      first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+      AND second_dt IS NOT NULL
+      AND days_to_second <= 7
     ),
-    first_ts AS (
-      SELECT user_pseudo_id, MIN(event_timestamp) AS first_ts
-      FROM success_purchases
-      GROUP BY 1
+    NULLIF(COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)), 0)
+  ) AS repurchase_rate_7d,
+  
+  COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) AS eligible_first_for_30d,
+  SAFE_DIVIDE(
+    COUNTIF(
+      first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+      AND second_dt IS NOT NULL
+      AND days_to_second <= 30
     ),
-    second_ts AS (
-      SELECT s.user_pseudo_id, MIN(s.event_timestamp) AS second_ts
-      FROM success_purchases s
-      INNER JOIN first_ts f
-        ON s.user_pseudo_id = f.user_pseudo_id
-        AND s.event_timestamp > f.first_ts
-      GROUP BY 1
-    ),
-    platform_first AS (
-      SELECT user_pseudo_id, platform
-      FROM (
-        SELECT
-          user_pseudo_id,
-          platform,
-          ROW_NUMBER() OVER (PARTITION BY user_pseudo_id ORDER BY event_timestamp) AS rn
-        FROM success_purchases
-      )
-      WHERE rn = 1
-    ),
-    user_lifetime AS (
-      SELECT
-        f.user_pseudo_id,
-        DATE(f.first_ts) AS first_dt,
-        DATE(s.second_ts) AS second_dt,
-        DATE_DIFF(DATE(s.second_ts), DATE(f.first_ts), DAY) AS days_to_second,
-        COALESCE(pf.platform, 'UNKNOWN') AS platform
-      FROM first_ts f
-      LEFT JOIN second_ts s ON f.user_pseudo_id = s.user_pseudo_id
-      LEFT JOIN platform_first pf ON f.user_pseudo_id = pf.user_pseudo_id
-    ),
-    daily_spine AS (
-      SELECT d AS dt
-      FROM UNNEST(GENERATE_DATE_ARRAY(
-        DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY),
-        CURRENT_DATE()
-      )) AS d
-    ),
-    daily_agg AS (
-      SELECT
-        FORMAT_DATE('%Y-%m-%d', d.dt) AS date,
-        (SELECT COUNT(*) FROM user_lifetime u WHERE u.first_dt = d.dt) AS first_purchase_users,
-        (SELECT COUNT(*) FROM user_lifetime u WHERE u.second_dt = d.dt) AS second_purchase_users
-      FROM daily_spine d
-    ),
-    platform_breakdown AS (
-      SELECT
-        platform,
-        COUNT(*) AS total_users,
-        COUNTIF(second_dt IS NOT NULL) AS repurchasers,
-        SAFE_DIVIDE(COUNTIF(second_dt IS NOT NULL), NULLIF(COUNT(*), 0)) AS repurchase_rate
-      FROM user_lifetime
-      GROUP BY 1
-    )
-    SELECT
-      (SELECT COUNT(*) FROM user_lifetime) AS total_purchase_users,
-      (SELECT COUNTIF(second_dt IS NOT NULL) FROM user_lifetime) AS repurchasers,
-      SAFE_DIVIDE(
-        (SELECT COUNTIF(second_dt IS NOT NULL) FROM user_lifetime),
-        NULLIF((SELECT COUNT(*) FROM user_lifetime), 0)
-      ) AS repurchase_rate,
-      (SELECT AVG(CAST(days_to_second AS FLOAT64)) FROM user_lifetime WHERE second_dt IS NOT NULL) AS avg_days_to_repurchase,
-      (SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) FROM user_lifetime) AS eligible_first_for_7d,
-      (SELECT COUNTIF(
-        first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-        AND second_dt IS NOT NULL
-        AND days_to_second <= 7
-      ) FROM user_lifetime) AS repurchased_within_7d,
-      SAFE_DIVIDE(
-        (SELECT COUNTIF(
-          first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-          AND second_dt IS NOT NULL
-          AND days_to_second <= 7
-        ) FROM user_lifetime),
-        NULLIF((SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) FROM user_lifetime), 0)
-      ) AS repurchase_rate_7d,
-      (SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) FROM user_lifetime) AS eligible_first_for_30d,
-      (SELECT COUNTIF(
-        first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-        AND second_dt IS NOT NULL
-        AND days_to_second <= 30
-      ) FROM user_lifetime) AS repurchased_within_30d,
-      SAFE_DIVIDE(
-        (SELECT COUNTIF(
-          first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
-          AND second_dt IS NOT NULL
-          AND days_to_second <= 30
-        ) FROM user_lifetime),
-        NULLIF((SELECT COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) FROM user_lifetime), 0)
-      ) AS repurchase_rate_30d,
-      (SELECT ARRAY_AGG(STRUCT(date, first_purchase_users, second_purchase_users) ORDER BY date) FROM daily_agg) AS daily_data,
-      (SELECT ARRAY_AGG(STRUCT(
-        platform,
-        total_users,
-        repurchasers,
-        repurchase_rate
-      ) ORDER BY total_users DESC) FROM platform_breakdown) AS platform_breakdown
-  `;
+    NULLIF(COUNTIF(first_dt <= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)), 0)
+  ) AS repurchase_rate_30d,
+
+  -- Nested Arrays for Dashboarding
+  (SELECT ARRAY_AGG(STRUCT(date, first_purchase_users, second_purchase_users) ORDER BY date) FROM daily_agg) AS daily_data,
+  (SELECT ARRAY_AGG(STRUCT(platform, total_users, repurchasers, repurchase_rate) ORDER BY total_users DESC) FROM platform_breakdown) AS platform_breakdown
+FROM user_lifetime
+`;
 }
 
-// Paid Users: geo distribution of payers
+// Paid Users: geo distribution of payers (purchase, in_app_purchase, iap_success — aligned with paid KPIs)
 export function getPaidUsersGeoQuery(days: number = 30) {
   return `
     SELECT
@@ -1697,7 +1675,7 @@ export function getPaidUsersGeoQuery(days: number = 30) {
       COALESCE(SUM(event_value_in_usd), 0) as revenue
     FROM \`${dataset()}.${table()}\`
     WHERE ${tableFilter(days)}
-      AND event_name IN ('purchase','in_app_purchase')
+      AND event_name IN ('purchase','in_app_purchase','iap_success')
     GROUP BY geo.country
     ORDER BY payers DESC
     LIMIT 15

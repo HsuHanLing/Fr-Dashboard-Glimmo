@@ -255,8 +255,10 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Total unique users who made at least one purchase in the period. Includes GA4 auto-tracked and iap_success events.",
   },
   PAID_D7_RETENTION: {
-    formula: "(Payers active on D+7 / Total first-time payers in cohort) × 100%",
-    description: "D7 retention of paid users: % of users who made their first purchase in the window and had any activity 7 days later.",
+    formula:
+      "First pay = MIN(date) WHERE event_name = 'in_app_purchase'; retained = activity on first_pay_dt + 7 days (excluding notification_receive, notification_dismiss, app_remove)",
+    description:
+      "D7 retention of first-time in_app_purchase payers: % who had any qualifying activity on the calendar day 7 days after their first in_app_purchase. Cohort excludes users whose first pay was in the last 7 days (D7 not yet observable).",
   },
   PAID_ARPPU: {
     formula: "SUM(revenue) / COUNT(DISTINCT payers)",
@@ -271,32 +273,32 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
     description: "Median number of days from signup to first purchase.",
   },
   PAID_REPURCHASE_LIFETIME_BASE: {
-    formula: "COUNT(DISTINCT user) WHERE ≥1 successful purchase (lifetime, export window)",
+    formula: "COUNT(DISTINCT user) WHERE ≥1 in_app_purchase (lifetime, export window)",
     description:
-      "Users with at least one successful purchase in the lifetime scan. Same event and success rules as repurchase metrics.",
+      "Users with at least one in_app_purchase event in the repurchase lifetime scan (~3y). Same event_name filter as getRepurchaseQuery and Payer D7 retention.",
   },
   PAID_REPURCHASERS: {
-    formula: "COUNT(users) WHERE COUNT(successful purchases) ≥ 2 (lifetime)",
+    formula: "COUNT(users) WHERE ≥2 in_app_purchase events (lifetime, by timestamp order)",
     description:
-      "Unique users with at least two successful purchase events (lifetime). Events: in_app_purchase, purchase, iap_success, app_store_subscription_convert, app_store_subscription_renew. Success: event_value_in_usd > 0 OR iap_success. First/second purchase timestamps from export history (up to ~10y lookback). Excludes exchanger-only flows.",
+      "Unique users with at least two in_app_purchase events (lifetime). First and second purchase are the 1st and 2nd in_app_purchase by event_timestamp in the scan window (~3y).",
   },
   PAID_REPURCHASE_RATE: {
-    formula: "Repurchasers / Users with ≥1 successful purchase (lifetime)",
-    description: "Share of all-time payers (at least one successful purchase) who made a second successful purchase.",
+    formula: "Repurchasers / Users with ≥1 in_app_purchase (lifetime)",
+    description: "Share of users with at least one in_app_purchase who also have a second in_app_purchase.",
   },
   PAID_AVG_DAYS_REPURCHASE: {
-    formula: "AVG(DATE(second_purchase) - DATE(first_purchase)) for users with ≥2 purchases",
-    description: "Mean calendar days between first and second successful purchase.",
+    formula: "AVG(DATE(second in_app_purchase) - DATE(first in_app_purchase)) for users with ≥2",
+    description: "Mean calendar days between first and second in_app_purchase.",
   },
   PAID_REPURCHASE_7D: {
     formula: "(Users with 2nd purchase within 7d of 1st) / (Users whose first purchase was ≥7 days ago)",
     description:
-      "Among users whose first purchase was long enough ago to observe a 7-day window, the share who had a second successful purchase within 7 days of the first.",
+      "Share of users in the 7-day cohort (first in_app_purchase at least 7 days ago) who had a second in_app_purchase within 7 calendar days of the first. Numerator requires eligibility so it matches the denominator.",
   },
   PAID_REPURCHASE_30D: {
     formula: "(Users with 2nd purchase within 30d of 1st) / (Users whose first purchase was ≥30 days ago)",
     description:
-      "Among users whose first purchase was long enough ago to observe a 30-day window, the share who had a second successful purchase within 30 days of the first.",
+      "Share of users in the 30-day cohort (first in_app_purchase at least 30 days ago) who had a second in_app_purchase within 30 calendar days of the first.",
   },
   PAID_REVENUE_TOTAL: {
     formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','iap_success')",

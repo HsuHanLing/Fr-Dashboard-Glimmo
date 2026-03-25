@@ -226,7 +226,7 @@ export const translations = {
     paidRepeat: "Repeat",
     paidRepurchaseTitle: "Repurchase (lifetime)",
     paidRepurchaseDesc:
-      "Successful purchases: same events as monetization payers; first/second purchase from full export history. Rates 7d/30d use users whose first purchase was long enough ago to observe the window.",
+      "Repurchase metrics use only in_app_purchase (same as Payer D7): first/second ranked by time over ~3y export window. 7d/30d rates = eligible cohort repurchasers ÷ eligible cohort size. Daily chart counts users only on first- or second-purchase day. Payer geo table still uses purchase, in_app_purchase, iap_success.",
     paidRepurchasers: "Repurchasers",
     paidRepurchaseRate: "Repurchase rate",
     paidAvgDaysRepurchase: "Avg. days to 2nd purchase",
@@ -578,7 +578,7 @@ export const translations = {
     paidRepeat: "复购",
     paidRepurchaseTitle: "复购（终身）",
     paidRepurchaseDesc:
-      "成功购买：与商业化付费事件一致；首单/次单从导出全量历史计算。7 日/30 日复购率的分母为「首单足够早、可观测该窗口」的用户。",
+      "复购指标仅统计 in_app_purchase（与付费 D7 一致）：按时间排序的首单/次单，约 3 年导出窗口。7 日/30 日复购率 = 可观测队列内复购人数 ÷ 队列人数。每日图仅在首单日/次单日各计一次。付费地理表仍含 purchase、in_app_purchase、iap_success。",
     paidRepurchasers: "复购人数（≥2 次成功购买）",
     paidRepurchaseRate: "复购率",
     paidAvgDaysRepurchase: "平均距二次购买天数",
