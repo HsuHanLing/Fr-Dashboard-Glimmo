@@ -1563,7 +1563,7 @@ export function getPaidUsersFirstPayDistQuery(days: number = 30) {
   `;
 }
 
-// Repurchase: lifetime in_app_purchase (non-subscription SKUs); KPI + daily + platform + frequency buckets (2 / 3 / 4 / 5+)
+// Repurchase: lifetime in_app_purchase excluding subscription product_ids (exclusivemonthly, exclusiveaccess, subscription); KPI + daily + platform (distinct users) + frequency buckets (2 / 3 / 4 / 5+)
 export function getRepurchaseQuery(days: number = 30) {
   /** ~3y export window — balances lifetime semantics vs scan cost (was 10y). */
   const life = 1095;
@@ -1581,7 +1581,7 @@ WITH success_purchases AS (
     AND COALESCE(
       (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id' LIMIT 1),
       ''
-    ) NOT IN ('exclusivemonthly', 'exclusiveaccess')
+    ) NOT IN ('exclusivemonthly', 'exclusiveaccess','subscription')
 ),
 user_purchase_totals AS (
   SELECT user_pseudo_id, COUNT(*) AS n
@@ -1652,9 +1652,13 @@ daily_agg AS (
 platform_breakdown AS (
   SELECT
     platform,
-    COUNT(*) AS total_users,
-    COUNTIF(second_dt IS NOT NULL) AS repurchasers,
-    SAFE_DIVIDE(COUNTIF(second_dt IS NOT NULL), COUNT(*)) AS repurchase_rate
+    COUNT(distinct user_pseudo_id) AS total_users,
+    COUNT(DISTINCT CASE WHEN second_dt IS NOT NULL THEN user_pseudo_id END) AS repurchasers,
+    -- Calculate rate based on the distinct counts above
+    SAFE_DIVIDE(
+      COUNT(DISTINCT CASE WHEN second_dt IS NOT NULL THEN user_pseudo_id END), 
+      COUNT(DISTINCT user_pseudo_id)
+    ) AS repurchase_rate
   FROM user_lifetime
   GROUP BY 1
 )

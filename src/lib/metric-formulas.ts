@@ -275,12 +275,12 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   PAID_REPURCHASE_LIFETIME_BASE: {
     formula: "COUNT(DISTINCT user) WHERE ≥1 in_app_purchase (lifetime, export window)",
     description:
-      "Users with at least one qualifying in_app_purchase in the repurchase lifetime scan (~3y), excluding subscription SKUs (exclusivemonthly, exclusiveaccess). Denominator for repurchase rate.",
+      "Users with at least one qualifying in_app_purchase in the repurchase lifetime scan (~3y), excluding product_id IN (exclusivemonthly, exclusiveaccess, subscription). Denominator for repurchase rate.",
   },
   PAID_REPURCHASERS: {
     formula: "COUNT(users) WHERE ≥2 in_app_purchase events (lifetime, by timestamp order)",
     description:
-      "Unique users with at least two qualifying in_app_purchase events (lifetime): excludes product_id exclusivemonthly / exclusiveaccess. First and second purchase are the 1st and 2nd in_app_purchase by event_timestamp in the scan window (~3y). Frequency chart buckets: 2, 3, 4, 5+ total purchases.",
+      "Unique users with at least two qualifying in_app_purchase events (lifetime): same product_id exclusions as repurchase SQL. First and second purchase are the 1st and 2nd in_app_purchase by event_timestamp in the scan window (~3y). Frequency chart buckets: 2, 3, 4, 5+ total purchases.",
   },
   PAID_REPURCHASE_RATE: {
     formula: "Repurchasers / Users with ≥1 in_app_purchase (lifetime)",
@@ -302,9 +302,9 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   },
   PAID_REPURCHASE_FREQUENCY_BUCKETS: {
     formula:
-      "Among users with ≥2 qualifying in_app_purchase events: COUNT per bucket where total purchases = 2, 3, 4, or ≥5 (excludes subscription SKUs exclusivemonthly / exclusiveaccess).",
+      "Among users with ≥2 qualifying in_app_purchase events: COUNT per bucket where total purchases = 2, 3, 4, or ≥5; product_id NOT IN (exclusivemonthly, exclusiveaccess, subscription).",
     description:
-      "Splits repurchasers by lifetime purchase count in the repurchase export window: exactly 2, 3, 4, or five or more qualifying IAPs. Percentages are shares of all repurchasers (sum of buckets equals Repurchasers).",
+      "Splits repurchasers by lifetime purchase count in the repurchase export window: exactly 2, 3, 4, or five or more qualifying IAPs (after SKU exclusions). Percentages are shares of all repurchasers (sum of buckets equals Repurchasers).",
   },
   PAID_REVENUE_TOTAL: {
     formula: "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','iap_success')",

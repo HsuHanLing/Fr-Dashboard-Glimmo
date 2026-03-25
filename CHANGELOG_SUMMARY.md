@@ -45,9 +45,11 @@
 - `metric-formulas.ts` 与 `queries.ts` 中事件名、公式、描述已统一更新
 
 ## 11. 付费用户复购与地理（Paid Users）
-- **复购 SQL**：仅 `event_name = 'in_app_purchase'`（与付费 D7 留存首单定义一致）；首单/次单按 `event_timestamp` 排序
-- **7d/30d 率**：输出 `repurchase_rate_7d` / `repurchase_rate_30d`（可观测队列内分子 ÷ 分母），与 API `/api/marketing/repurchase` 字段对齐
-- **每日趋势**：按日历日仅计「首单日」「次单日」（`COUNTIF(d.dt = first_dt)` / `second_dt`），避免次单日记入首单
+- **复购 SQL**：`event_name = 'in_app_purchase'`，且 `product_id` 排除 `exclusivemonthly`、`exclusiveaccess`、`subscription`（与付费 D7 首单定义可不同）；首单/次单按 `event_timestamp`
+- **频次柱状图**：复购用户按终身累计 2 / 3 / 4 / 5+ 次购买分组
+- **按平台**：`platform_breakdown` 使用 `COUNT(DISTINCT user_pseudo_id)` 计人数与复购人数
+- **7d/30d 率**：`repurchase_rate_7d` / `repurchase_rate_30d`（可观测队列内分子 ÷ 分母）
+- **每日趋势**：首单日/次单日各计一次（`COUNTIF(d.dt = first_dt)` / `second_dt`）
 - **付费地理**：`purchase`、`in_app_purchase`、`iap_success`，与总付费用户 KPI 一致
 
 ## 10. UI / i18n
