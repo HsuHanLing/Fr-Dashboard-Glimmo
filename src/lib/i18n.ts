@@ -43,7 +43,8 @@ export const translations = {
     creatorSupply: "Creator & Supply",
     creatorSupplyDesc: "Active creators (Regular / KOL), posts frequency, earnings, withdrawal",
     monetization: "Monetization",
-    monetizationDesc: "Revenue Mix: Unlock Pack / Subscription",
+    monetizationDesc:
+      "Revenue mix: Unlock Pack vs Subscription. Subscription uses exclusive SKUs (exclusivemonthly, exclusiveaccess), iap_success with a subscription product_id, or App Store subscription events—same rules as Subscription / VIP Analysis.",
     economyHealth: "Economy Health",
     economyHealthDesc: "Unlock consumption, Scratch card rewards, Upgrade card usage",
     contentFeed: "Content & Feed Performance",
@@ -254,7 +255,8 @@ export const translations = {
     acqEvents: "Events",
     acqUsers: "Users",
     subAnalysis: "Subscription / VIP Analysis",
-    subAnalysisDesc: "Subscriber breakdown: in-app cash/diamond exchange vs. real-money paid subscriptions",
+    subAnalysisDesc:
+      "Exchange vs paid vs wallet. Paid subscription counts and revenue use product_id exclusivemonthly/exclusiveaccess, iap_success with product_id containing 'subscription', or App Store subscription convert/renew.",
     subTotalSubs: "Total Subscribers",
     subExchange: "Exchange (Free)",
     subPaid: "Paid (Real $)",
@@ -605,7 +607,8 @@ export const translations = {
     acqEvents: "事件数",
     acqUsers: "用户数",
     subAnalysis: "订阅 / VIP 分析",
-    subAnalysisDesc: "订阅用户拆分：app内钻石/现金兑换 vs. 真实付费订阅",
+    subAnalysisDesc:
+      "兑换、付费、钱包。付费订阅人数与收入：product_id 为 exclusivemonthly/exclusiveaccess，或 iap_success 且 product_id 含 subscription，或 App Store 订阅转化/续订。",
     subTotalSubs: "总订阅用户",
     subExchange: "兑换（免费）",
     subPaid: "付费（真金白银）",

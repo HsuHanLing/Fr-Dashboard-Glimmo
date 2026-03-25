@@ -612,7 +612,7 @@ export function getGeoDistributionQuery(days: number = 30) {
   `;
 }
 
-// Monetization - Revenue Mix: Subscription vs Unlock Pack (same product_id rule as Paid Sub Revenue)
+// Monetization - Revenue Mix: Subscription vs Unlock Pack (SUBSCRIPTION_PAID_PRODUCT_PARAMS = same as sub_plan_revenue / SUB_PAID)
 export function getMonetizationQuery(days: number = 30) {
   return `
     WITH classified AS (
@@ -1446,31 +1446,29 @@ export function getPaidUsersKPIQuery(days: number = 30) {
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableFilter(days)}
         AND event_name IN ('purchase','in_app_purchase',
-          'app_store_subscription_convert','app_store_subscription_renew')
+          'app_store_subscription_convert','app_store_subscription_renew', 'iap_success')
     ),
     all_time_first AS (
       SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) as first_pay_dt, count(*) as pay_count
       FROM \`${dataset()}.${table()}\`
       WHERE ${tableSuffixSince(lookback)}
         AND event_name IN ('purchase','in_app_purchase',
-          'app_store_subscription_convert','app_store_subscription_renew')
+          'app_store_subscription_convert','app_store_subscription_renew', 'iap_success')
       GROUP BY 1
     ),
     payer_classify AS (
-      SELECT DISTINCT pe.user_pseudo_id,
-        CASE WHEN af.pay_count = 1
+      SELECT DISTINCT user_pseudo_id,
+        CASE WHEN pay_count = 1
           THEN 'first_time' ELSE 'repeat' END as payer_type
       FROM all_time_first
     ),
     sub_revenue AS (
       SELECT
         COALESCE(SUM(CASE
-          WHEN event_name IN ('app_store_subscription_convert','app_store_subscription_renew')
-            THEN event_value_in_usd
-          WHEN event_name IN ('purchase','in_app_purchase','iap_success') AND (
-            COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'), '') IN ('exclusivemonthly', 'exclusiveaccess')
-            OR (event_name = 'iap_success' AND COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_id'), '') LIKE '%subscription%')
-          ) THEN event_value_in_usd
+          WHEN event_name IN ('purchase','in_app_purchase','iap_success',
+            'app_store_subscription_convert','app_store_subscription_renew')
+            AND ${SUBSCRIPTION_PAID_PRODUCT_PARAMS}
+          THEN event_value_in_usd
           ELSE 0
         END), 0) as subscription_revenue,
         COALESCE(SUM(event_value_in_usd), 0) as total_revenue
@@ -1854,8 +1852,6 @@ export function getCreatorSupplyQuery(days: number = 30) {
     all_events AS (
       SELECT * FROM click_events WHERE video_author_id IS NOT NULL
       UNION ALL
-      SELECT * FROM exposure_events WHERE video_author_id IS NOT NULL
-      UNION ALL
       SELECT * FROM like_events WHERE video_author_id IS NOT NULL
     ),
 
@@ -1922,15 +1918,7 @@ export function getCreatorSupplyQuery(days: number = 30) {
       SAFE_DIVIDE(
         COUNTIF(event_name IN ('click_like_button','LikeVideos_Success','LikePhotos_Success') AND video_type IN ('$UP','more_$up')),
         NULLIF(COUNTIF(event_name = 'video_unlock_success'), 0)
-      ) * 100 as up_like_rate,
-
-      0 as profile_exposure,
-      0 as profile_exposure_uv,
-
-      -- Source breakdown (from click events only)
-      COUNTIF(source = 'Circle') as circle_events,
-      COUNTIF(source = 'Explore') as explore_events
-
+      ) * 100 as up_like_rate
     FROM creator_events
     GROUP BY creator_type
     ORDER BY creator_type

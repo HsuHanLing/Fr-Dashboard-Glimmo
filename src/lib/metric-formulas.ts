@@ -323,9 +323,20 @@ export const METRIC_FORMULAS: Record<string, { formula: string; description: str
   },
   SUB_PAID_REVENUE: {
     formula:
-      "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','app_store_subscription_convert','app_store_subscription_renew','iap_success') AND same subscription classification as SUB_PAID (exclusive SKUs + iap_success rule + store subs)",
+      "SUM(event_value_in_usd) WHERE event_name IN ('purchase','in_app_purchase','iap_success','app_store_subscription_convert','app_store_subscription_renew') AND event_value_in_usd > 0 AND (same product_id predicates as SUB_PAID)",
     description:
-      "Real-money subscription revenue: same product rules as SUB_PAID (exclusivemonthly/exclusiveaccess, iap_success+subscription SKU, or App Store subscription events). Excludes wallet (in-app cash) and top-up.",
+      "Real-money subscription revenue: same rules as SUB_PAID and Monetization “Subscription” slice—exclusivemonthly/exclusiveaccess, iap_success with product_id containing 'subscription', or App Store subscription convert/renew. Used for Paid Users “Subscription” share and Subscription / VIP Paid Sub Revenue. Excludes wallet and top-up.",
+  },
+  SUB_ANALYSIS_INTRO: {
+    formula: "See SUB_PAID, SUB_WALLET, SUB_EXCHANGE, SUB_PAID_REVENUE",
+    description:
+      "Paid subscription users and revenue use product_id IN (exclusivemonthly, exclusiveaccess), or iap_success with product_id LIKE '%subscription%', or App Store subscription events. Wallet and exchange rows use their own events.",
+  },
+  MONETIZATION_REVENUE_MIX: {
+    formula:
+      "Per event row: Subscription if purchase/IAP/store events AND (exclusive SKUs OR iap_success+subscription OR App Store sub events); else Unlock Pack",
+    description:
+      "Pie chart: Subscription slice matches Paid Sub Revenue (exclusive SKUs, iap_success subscription SKU, App Store subs). Remaining revenue from those events is Unlock Pack (e.g. top-up).",
   },
   SUB_IAP_SUCCESS: {
     formula: "(Subscription paid users / Subscription IAP start users) × 100%",

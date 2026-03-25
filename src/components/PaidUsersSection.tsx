@@ -144,9 +144,14 @@ export function PaidUsersSection({ data, geo, analyticsDays, t }: Props) {
           </p>
           <p className="mt-1 text-xl font-semibold text-[var(--foreground)]">{data ? formatCurrency(data.total_revenue) : "—"}</p>
           {data && data.subscription_revenue > 0 && (
-            <p className="mt-2 text-[10px] text-[var(--secondary-text)]">
-              {t("paidSubRevenue")}: <span className="font-semibold">{formatCurrency(data.subscription_revenue)}</span>
-              <span className="ml-1 text-[9px]">
+            <p className="mt-2 flex flex-wrap items-center gap-1 text-[10px] text-[var(--secondary-text)]">
+              <span className="inline-flex items-center">
+                {t("paidSubRevenue")}
+                <InfoTooltip metricKey="SUB_PAID_REVENUE" />
+                :
+              </span>
+              <span className="font-semibold">{formatCurrency(data.subscription_revenue)}</span>
+              <span className="text-[9px]">
                 ({data.total_revenue > 0 ? Math.round((data.subscription_revenue / data.total_revenue) * 1000) / 10 : 0}%)
               </span>
             </p>

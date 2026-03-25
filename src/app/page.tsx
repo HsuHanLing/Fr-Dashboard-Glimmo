@@ -29,6 +29,7 @@ import { ShareDataSection } from "@/components/ShareDataSection";
 import { ReferralRewardSection } from "@/components/ReferralRewardSection";
 import { FlywheelHealthDashboard } from "@/components/FlywheelHealthDashboard";
 import { RegistrationFunnelSection } from "@/components/RegistrationFunnelSection";
+import { MetricInfoTooltip } from "@/components/MetricInfoTooltip";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { TranslationKey } from "@/lib/i18n";
 import { METRIC_FORMULAS } from "@/lib/metric-formulas";
@@ -912,7 +913,10 @@ export default function DashboardPage() {
                 <h2 className="text-base font-semibold tracking-tight">{t("monetization")}</h2>
                 <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)", color: "var(--secondary-text)" }}>{t("lastNDays").replace("{n}", String(analyticsDays))}</span>
               </div>
-              <p className="mt-0.5 text-xs text-[var(--secondary-text)]">{t("monetizationDesc")}</p>
+              <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--secondary-text)]">
+                <span>{t("monetizationDesc")}</span>
+                <MetricInfoTooltip metricKey="MONETIZATION_REVENUE_MIX" />
+              </p>
               <div className="mt-4"><MonetizationChart data={monetization ?? []} /></div>
             </div>
           </section>
