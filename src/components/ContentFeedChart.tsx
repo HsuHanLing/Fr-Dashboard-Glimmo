@@ -150,7 +150,7 @@ export function ContentFeedChart({ data }: { data: ContentFeedData }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 10, fill: "var(--secondary-text)" }} tickFormatter={(v) => fmt(v)} />
                 <YAxis type="category" dataKey="stage" width={88} tick={{ fontSize: 10, fill: "var(--secondary-text)" }} />
-                <Tooltip {...chartTooltip} formatter={(v: number) => [fmt(v), "Events"]} />
+                <Tooltip {...chartTooltip} formatter={(v) => [fmt(Number(v ?? 0)), "Events"]} />
                 <Bar dataKey="value" name="Events" radius={[0, 4, 4, 0]}>
                   {supVolumeData.map((e, i) => (
                     <Cell key={i} fill={e.fill} />
@@ -173,7 +173,7 @@ export function ContentFeedChart({ data }: { data: ContentFeedData }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 10, fill: "var(--secondary-text)" }} tickFormatter={(v) => fmt(v)} />
                 <YAxis type="category" dataKey="stage" width={88} tick={{ fontSize: 10, fill: "var(--secondary-text)" }} />
-                <Tooltip {...chartTooltip} formatter={(v: number) => [fmt(v), "Events"]} />
+                <Tooltip {...chartTooltip} formatter={(v) => [fmt(Number(v ?? 0)), "Events"]} />
                 <Bar dataKey="value" name="Events" radius={[0, 4, 4, 0]}>
                   {upVolumeData.map((e, i) => (
                     <Cell key={i} fill={e.fill} />
@@ -193,7 +193,7 @@ export function ContentFeedChart({ data }: { data: ContentFeedData }) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} horizontal={false} />
               <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: "var(--secondary-text)" }} tickFormatter={(v) => `${v}%`} />
               <YAxis type="category" dataKey="name" width={200} tick={{ fontSize: 9, fill: "var(--secondary-text)" }} />
-              <Tooltip {...chartTooltip} formatter={(v: number) => [`${Number(v).toFixed(1)}%`, "Rate"]} />
+              <Tooltip {...chartTooltip} formatter={(v) => [`${Number(v ?? 0).toFixed(1)}%`, "Rate"]} />
               <Bar dataKey="pct" name="Rate" fill="#9334e6" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
